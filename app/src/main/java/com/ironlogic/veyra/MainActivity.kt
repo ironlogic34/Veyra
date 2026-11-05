@@ -28,8 +28,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.ironlogic.veyra.data.video.MediaStoreVideoDataSource
-import com.ironlogic.veyra.data.video.SafVideoFolderDataSource
+import com.ironlogic.veyra.data.video.VideoLibraryRepository
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.permissions.VideoAccessLevel
 import com.ironlogic.veyra.permissions.VideoAccessPermission
@@ -79,38 +78,18 @@ class MainActivity : ComponentActivity() {
                 fun refreshLibrary() {
                     scope.launch {
                         isLoading = true
-                        val found = linkedMapOf<String, VideoItem>()
-                        val errors = mutableListOf<String>()
-
-                        if (accessLevel != VideoAccessLevel.NONE) {
-                            try {
-                                MediaStoreVideoDataSource(contentResolver).getVideos()
-                                    .forEach { found[it.contentUri.toString()] = it }
-                            } catch (_: SecurityException) {
-                                errors += "Device-library permission changed."
-                                accessLevel = VideoAccessPermission.evaluate(this@MainActivity)
-                            } catch (_: Exception) {
-                                errors += "Could not read the device video library."
-                            }
-                        }
-
-                        folderUris.forEach { folderUri ->
-                            try {
-                                SafVideoFolderDataSource(contentResolver).getVideos(folderUri)
-                                    .forEach { found[it.contentUri.toString()] = it }
-                            } catch (_: SecurityException) {
-                                errors += "A saved folder permission was revoked."
-                            } catch (_: Exception) {
-                                errors += "A selected folder could not be scanned."
-                            }
-                        }
-
-                        videos = found.values.sortedWith(
-                            compareByDescending<VideoItem> { it.dateModifiedSeconds }
-                                .thenBy { it.displayName.lowercase() }
+                        val result = VideoLibraryRepository(contentResolver).load(
+                            accessLevel = accessLevel,
+                            folderUris = folderUris
                         )
+                        videos = result.videos
+                        if (accessLevel == VideoAccessLevel.FULL_LIBRARY ||
+                            accessLevel == VideoAccessLevel.SELECTED_VIDEOS
+                        ) {
+                            accessLevel = VideoAccessPermission.evaluate(this@MainActivity)
+                        }
                         status = when {
-                            errors.isNotEmpty() -> errors.distinct().joinToString(" ")
+                            result.errors.isNotEmpty() -> result.errors.joinToString(" ")
                             videos.isEmpty() -> "No videos found in the accessible locations."
                             else -> "Found ${videos.size} video(s)."
                         }
