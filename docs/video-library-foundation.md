@@ -1,44 +1,37 @@
 # Video library foundation
 
-## Current implementation
+## Device-library permission
 
-`MediaStoreVideoDataSource` queries Android's external video collection and returns `VideoItem` records.
+`VideoAccessPermission` centralizes version-specific permission rules:
 
-Each item currently contains:
-- Content URI
-- Display name
-- Duration
-- File size
-- Last-modified timestamp
-- MIME type
-- Relative folder path when available (Android 10+)
+- Android 14+ (API 34+): requests `READ_MEDIA_VIDEO` and `READ_MEDIA_VISUAL_USER_SELECTED`. Full and selected-video-only access are represented separately.
+- Android 13 (API 33): requests `READ_MEDIA_VIDEO`.
+- Android 12 and earlier: requests `READ_EXTERNAL_STORAGE`.
 
-Results are ordered by modified time, newest first, with media ID as a deterministic secondary sort.
+Veyra does not request image or audio permissions. Permission prompts occur only after the user chooses to grant or manage video access. Selected-video access is never mislabeled as full-library access.
 
-## Permission boundary
+## User-selected folders
 
-The caller must request permission before querying:
-- Android 13 and newer: `READ_MEDIA_VIDEO`
-- Android 12 and older: `READ_EXTERNAL_STORAGE`
+`OpenDocumentTree` launches Android's Storage Access Framework picker. Veyra takes a persistable read grant and reloads the OS-maintained persisted grant list on later launches.
 
-The data source does not launch permission prompts and does not silently request access.
+`SafVideoFolderDataSource` recursively walks child documents, detects video MIME types, and returns content URIs. It never converts document URIs into filesystem paths. A folder grant can be removed by releasing it.
 
-## Folder access
+Some SAF providers do not expose duration in their document cursor, so SAF items currently use a duration of zero until the playback/metadata layer reads the media.
 
-User-selected folder support will use the Storage Access Framework and persisted URI permissions. It is intentionally separate from MediaStore's device-wide indexed collection. That source is not implemented yet.
+## Functional access test screen
 
-## Design and data rules
+The temporary screen can request/manage device video permission, add folders, list/remove saved grants, refresh and merge library results, and report revoked access or scan errors. It is a functional test surface, not the final phone or tablet UI.
+
+## Data rules
 
 - Use content URIs for media access.
 - Do not rely on filenames or filesystem paths as unique identities.
 - Keep media querying off the main thread.
-- Keep permission handling outside the data source.
+- Keep permission handling outside data sources.
 - Phone and tablet library screens remain separate UI implementations over shared data.
 
 ## Not implemented yet
 
-- Runtime permission flow and partial/denied permission states
-- SAF folder picker and persisted folder grants
 - Thumbnail loading and caching
 - Search, sorting, filtering, and folder navigation UI
 - Database-backed playback history and resume positions
