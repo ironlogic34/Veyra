@@ -24,8 +24,7 @@ Veyra is at the foundation stage. The repository is being set up before feature 
 
 ## Development
 
-See `docs/architecture/overview.md` for the current architectural direction and decisions still awaiting detailed design.
-
-## Status
+- [Architecture overview](docs/architecture/overview.md)
+- [Design-system foundation](docs/design-system.md)
 
 No playback, library scanning, streaming, or final UI has been implemented yet. Those will be introduced in small, reviewable changes.
