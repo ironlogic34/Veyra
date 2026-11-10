@@ -1,12 +1,9 @@
 package com.ironlogic.veyra
 
-import android.Manifest
 import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
-import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import androidx.activity.ComponentActivity
@@ -132,10 +129,6 @@ class MainActivity : ComponentActivity() {
                         VideoAccessLevel.NONE -> "Video permission was not granted. You can still add a folder."
                     }
                 }
-
-                val notificationPermissionLauncher = rememberLauncherForActivityResult(
-                    ActivityResultContracts.RequestPermission()
-                ) { /* Playback remains available even if notifications are denied. */ }
 
                 val folderPicker = rememberLauncherForActivityResult(
                     ActivityResultContracts.OpenDocumentTree()
@@ -291,14 +284,7 @@ class MainActivity : ComponentActivity() {
                                                 val session = playbackSession
                                                 if (session == null) {
                                                     status = "Playback service is still starting. Try again in a moment."
-                                                } else {
-                                                    if (
-                                                        Build.VERSION.SDK_INT >= 33 &&
-                                                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-                                                    ) {
-                                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                                    }
-                                                    scope.launch {
+                                                } else {                                                    scope.launch {
                                                         try {
                                                             val queue = videos.map { it.contentUri }
                                                             val names = videos.map { it.displayName }
