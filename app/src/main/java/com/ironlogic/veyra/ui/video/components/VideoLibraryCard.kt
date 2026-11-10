@@ -3,6 +3,7 @@ package com.ironlogic.veyra.ui.video.components
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
@@ -52,7 +53,7 @@ fun VideoLibraryCard(
                     Image(
                         bitmap = bitmap.asImageBitmap(),
                         contentDescription = "Preview of ${video.displayName}",
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
                 }
