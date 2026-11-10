@@ -17,7 +17,10 @@ import androidx.media3.exoplayer.ExoPlayer
  */
 @MainThread
 class VideoPlaybackEngine(context: Context) : AutoCloseable {
-    private val exoPlayer = ExoPlayer.Builder(context.applicationContext).build()
+    private val exoPlayer = ExoPlayer.Builder(context.applicationContext).build().apply {
+        setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
+        setWakeMode(C.WAKE_MODE_LOCAL)
+    }
 
     val player: Player
         get() = exoPlayer
