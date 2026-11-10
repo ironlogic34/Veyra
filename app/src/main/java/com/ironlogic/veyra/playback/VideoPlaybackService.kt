@@ -12,7 +12,6 @@ import android.os.IBinder
 import androidx.media3.common.Player
 import androidx.media3.session.MediaSession
 import com.ironlogic.veyra.MainActivity
-import com.ironlogic.veyra.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -138,7 +137,7 @@ class VideoPlaybackService : Service() {
         )
 
         return Notification.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(title)
             .setContentText(if (isPlaying) "Playing video" else "Playback paused")
             .setContentIntent(contentIntent)
