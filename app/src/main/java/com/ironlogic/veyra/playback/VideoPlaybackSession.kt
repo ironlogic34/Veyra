@@ -12,6 +12,7 @@ import com.ironlogic.veyra.data.video.VideoPlaybackRecord
 import com.ironlogic.veyra.data.video.VideoResumePolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -35,6 +36,7 @@ class VideoPlaybackSession(
     private var completionMode: VideoCompletionMode = VideoCompletionMode.STOP
     private var completionHandled = false
     private var released = false
+    private var pendingProgressSave: Job? = null
 
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -60,6 +62,7 @@ class VideoPlaybackSession(
         completionMode: VideoCompletionMode = VideoCompletionMode.STOP
     ) {
         checkActive()
+        pendingProgressSave?.join()
         this.queue = listOf(mediaUri)
         this.completionMode = completionMode
         completionHandled = false
@@ -76,6 +79,7 @@ class VideoPlaybackSession(
         completionMode: VideoCompletionMode = VideoCompletionMode.PLAY_NEXT
     ) {
         checkActive()
+        pendingProgressSave?.join()
         require(mediaUris.isNotEmpty()) { "Playback queue cannot be empty." }
         require(startIndex in mediaUris.indices) { "Start index is outside the playback queue." }
         queue = mediaUris.toList()
@@ -95,6 +99,7 @@ class VideoPlaybackSession(
 
     suspend fun saveProgress() {
         checkActive()
+        pendingProgressSave?.join()
         currentRecord()?.let { history.save(it) }
     }
 
@@ -104,6 +109,7 @@ class VideoPlaybackSession(
      */
     suspend fun release() {
         if (released) return
+        pendingProgressSave?.join()
         currentRecord()?.let { history.save(it) }
         released = true
         engine.removeListener(listener)
@@ -116,7 +122,7 @@ class VideoPlaybackSession(
         if (released) return
         val record = currentRecord() ?: return
         if (record.positionMs <= 0L) return
-        scope.launch { history.save(record) }
+        pendingProgressSave = scope.launch { history.save(record) }
     }
 
     private fun currentRecord(): VideoPlaybackRecord? {
