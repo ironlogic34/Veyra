@@ -67,7 +67,7 @@ Phone and tablet interfaces consume the shared logic through their own separate 
 
 The playback host must create and retain the session outside recomposition, attach the lifecycle bridge, and release the session when playback is actually finished. Notification, lock-screen, and Bluetooth controls remain separate work.
 
-`VideoLibraryCard` loads and displays a cached thumbnail for one video while leaving list/grid sizing and click navigation to the parent. `VideoPlaybackContent` combines the Media3 surface with transport controls and observes player state; it does not create or own the session. The phone and tablet screens can embed these shared pieces in their own distinct layouts.
+`VideoLibraryCard` loads and displays a cached thumbnail for one video. `VideoLibraryList` composes those cards in a keyed lazy list and exposes click handling, content padding, spacing, and empty-state text without imposing a screen design. `VideoPlaybackContent` combines the Media3 surface with transport controls and observes player state; it does not create or own the session. The phone and tablet screens can embed these shared pieces in their own distinct layouts.
 
 ## Playback history storage
 
@@ -87,7 +87,7 @@ The current activity remains a functional access test surface, not the final lib
 
 ## Not implemented yet
 
-- Thumbnail presentation in the library.
+- Integration of the reusable thumbnail card/list into the final library screens.
 - Folder navigation and UI controls for search, sorting, and filtering.
 - Actual playback host wiring and notification/background playback controls.
 - Notification, lock-screen, and Bluetooth controls.
