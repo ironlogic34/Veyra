@@ -39,6 +39,8 @@ The query layer is not connected to a screen yet. Phone and tablet interfaces wi
 
 `VideoThumbnailDataSource` extracts a preview frame from content URIs, including SAF document URIs, on the IO dispatcher. It uses scaled frame extraction where supported and a bounded in-memory LRU cache. Thumbnails are not persisted to disk. A revoked grant or unsupported provider returns no thumbnail rather than crashing the library.
 
+`VideoThumbnailFrame` is the first reusable Compose video component. It provides an overridable aspect ratio, shape, and fallback surface while leaving thumbnail rendering and all screen-specific geometry to its caller.
+
 ## Metadata loading and enrichment
 
 `VideoMetadataDataSource` reads duration, encoded width and height, rotation, bitrate, and container MIME type from a content URI using `MediaMetadataRetriever`. Metadata is loaded on the IO dispatcher.
@@ -49,7 +51,13 @@ A provider failure returns the original item unchanged. One inaccessible video t
 
 ## Metadata display formatting
 
-`VideoDisplayFormatters` provides Android-UI-independent formatting for duration, display resolution, and file size. Missing or invalid values display as `Unknown`. Quarter-turn video rotation is reflected in the displayed resolution, and file sizes use binary units (KiB, MiB, GiB).
+`VideoDisplayFormatters` provides Android-UI-independent formatting of duration, display resolution, and file size. Missing or invalid values display as `Unknown`. Quarter-turn video rotation is reflected in the displayed resolution, and file sizes use binary units (KiB, MiB, GiB).
+
+## Playback engine
+
+`VideoPlaybackEngine` wraps AndroidX Media3 ExoPlayer and accepts content URIs directly. It supports single-item playback, queue preparation, play/pause/toggle, seeking, repeat-one, listener registration, and point-in-time state snapshots.
+
+The engine is main-thread owned and must be released by its session owner. It does not yet own lifecycle policy, persistence, resume decisions, completion routing, notification controls, or the final playback UI. Those remain separate integration steps.
 
 ## Playback history and resume rules
 
@@ -61,7 +69,7 @@ A provider failure returns the original item unchanged. One inaccessible video t
 
 `VideoCompletionPolicy` resolves the configured Stop, Repeat, or Play Next behavior against a queue of content URIs. Play Next safely stops at the end of the queue, and invalid queue positions never produce an invalid playback target.
 
-The policy is independent of the playback engine and UI. The player integration will call it when a video reaches its completion event.
+The playback engine is now available as a separate layer; connecting completion events to this policy remains a follow-up integration step.
 
 ## Functional access test screen
 
@@ -73,11 +81,13 @@ The temporary screen can request/manage device video permission, add folders, li
 - Do not rely on filenames or filesystem paths as unique identities.
 - Keep media querying, thumbnail extraction, metadata extraction, and database work off the main thread.
 - Keep permission handling outside data sources.
-- Phone and tablet library screens remain separate UI implementations over shared data.
+- Keep phone and tablet library screens as separate UI implementations over shared data.
 
 ## Not implemented yet
 
-- Thumbnail presentation in the library UI
-- Folder navigation and UI controls for search, sorting, and filtering
-- Playback-engine integration and end-to-end resume behavior
-- UI controls for completion behavior
+- Thumbnail presentation in the library UI.
+- Folder navigation and UI controls for search, sorting, and filtering.
+- Playback-history persistence connected to real player events.
+- Resume and completion policies connected to the player.
+- Lifecycle-safe playback sessions and background/notification controls.
+- Separate final phone and tablet video screens based on the user's design specifications.
