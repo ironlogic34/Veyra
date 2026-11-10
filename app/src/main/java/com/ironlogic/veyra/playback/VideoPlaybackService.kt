@@ -144,7 +144,6 @@ class VideoPlaybackService : Service() {
         val title = player.mediaMetadata.title?.toString()
             ?: player.currentMediaItem?.mediaMetadata?.title?.toString()
             ?: "Veyra video playback"
-        val isPlaying = player.isPlaying
         val isPlaybackRequested = player.playWhenReady
         val contentIntent = PendingIntent.getActivity(
             this,
@@ -166,12 +165,13 @@ class VideoPlaybackService : Service() {
             .addAction(action(android.R.drawable.ic_media_previous, "Previous", ACTION_PREVIOUS))
             .addAction(
                 action(
-                    if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
-                    if (isPlaying) "Pause" else "Play",
-                    if (isPlaying) ACTION_PAUSE else ACTION_PLAY
+                    if (isPlaybackRequested) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+                    if (isPlaybackRequested) "Pause" else "Play",
+                    if (isPlaybackRequested) ACTION_PAUSE else ACTION_PLAY
                 )
             )
             .addAction(action(android.R.drawable.ic_media_next, "Next", ACTION_NEXT))
+            .addAction(action(android.R.drawable.ic_menu_close_clear_cancel, "Stop", ACTION_STOP))
             .setStyle(
                 Notification.MediaStyle()
                     .setMediaSession(mediaSession.platformToken)
