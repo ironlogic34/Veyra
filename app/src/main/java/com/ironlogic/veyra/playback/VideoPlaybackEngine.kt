@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.annotation.MainThread
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 
@@ -38,12 +39,27 @@ class VideoPlaybackEngine(context: Context) : AutoCloseable {
         mediaUris: List<Uri>,
         startIndex: Int = 0,
         startPositionMs: Long = 0L,
-        playWhenReady: Boolean = true
+        playWhenReady: Boolean = true,
+        displayNames: List<String> = emptyList()
     ) {
         require(mediaUris.isNotEmpty()) { "Playback queue cannot be empty." }
         require(startIndex in mediaUris.indices) { "Start index is outside the playback queue." }
         require(startPositionMs >= 0L) { "Start position cannot be negative." }
-        exoPlayer.setMediaItems(mediaUris.map(MediaItem::fromUri), startIndex, startPositionMs)
+        require(displayNames.isEmpty() || displayNames.size == mediaUris.size) {
+            "Display names must match the playback queue size."
+        }
+        val items = mediaUris.mapIndexed { index, uri ->
+            val title = displayNames.getOrNull(index)
+            if (title.isNullOrBlank()) {
+                MediaItem.fromUri(uri)
+            } else {
+                MediaItem.Builder()
+                    .setUri(uri)
+                    .setMediaMetadata(MediaMetadata.Builder().setTitle(title).build())
+                    .build()
+            }
+        }
+        exoPlayer.setMediaItems(items, startIndex, startPositionMs)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = playWhenReady
     }
