@@ -16,7 +16,7 @@ Veyra does not request image or audio permissions. Permission prompts occur only
 
 `SafVideoFolderDataSource` recursively walks child documents, detects video MIME types, and returns content URIs. It never converts document URIs into filesystem paths. A folder grant can be removed by releasing it.
 
-Some SAF providers do not expose duration in their document cursor, so SAF items currently use a duration of zero until the playback/metadata layer reads the media.
+Some SAF providers do not expose duration in their document cursor, so SAF items currently use a duration of zero until metadata is loaded for that item.
 
 ## Library repository
 
@@ -28,6 +28,12 @@ Results are deduplicated by exact content URI, then sorted newest-first with a c
 
 `VideoThumbnailDataSource` extracts a preview frame from content URIs, including SAF document URIs, on the IO dispatcher. It uses scaled frame extraction where supported and a bounded in-memory LRU cache. Thumbnails are not persisted to disk. A revoked grant or unsupported provider returns no thumbnail rather than crashing the library.
 
+## Metadata loading
+
+`VideoMetadataDataSource` reads duration, encoded width and height, rotation, bitrate, and container MIME type from a content URI using `MediaMetadataRetriever`. This fills gaps left by SAF providers that do not report duration in their document cursor. Metadata is loaded on the IO dispatcher and a provider failure returns no metadata instead of aborting the library scan.
+
+Metadata loading is deliberately separate from the initial folder scan. The UI can request it for visible or selected items later, rather than opening every video during every library refresh.
+
 ## Functional access test screen
 
 The temporary screen can request/manage device video permission, add folders, list/remove saved grants, refresh and merge library results, and report revoked access or scan errors. It is a functional test surface, not the final phone or tablet UI.
@@ -36,7 +42,7 @@ The temporary screen can request/manage device video permission, add folders, li
 
 - Use content URIs for media access.
 - Do not rely on filenames or filesystem paths as unique identities.
-- Keep media querying and thumbnail extraction off the main thread.
+- Keep media querying, thumbnail extraction, and metadata extraction off the main thread.
 - Keep permission handling outside data sources.
 - Phone and tablet library screens remain separate UI implementations over shared data.
 
