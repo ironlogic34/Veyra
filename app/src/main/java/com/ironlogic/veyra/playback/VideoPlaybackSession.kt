@@ -22,7 +22,6 @@ import kotlinx.coroutines.launch
  *
  * Public methods are main-thread owned. Call [open] before playback, call
  * [saveProgress] when the host pauses, and call [release] when the session ends.
- * The host should collect [engine.player] events on the main thread.
  */
 @MainThread
 class VideoPlaybackSession(
@@ -62,8 +61,8 @@ class VideoPlaybackSession(
         completionMode: VideoCompletionMode = VideoCompletionMode.STOP
     ) {
         checkActive()
-        pendingProgressSave?.join()
-        this.queue = listOf(mediaUri)
+        saveCurrentBeforeSwitch()
+        queue = listOf(mediaUri)
         this.completionMode = completionMode
         completionHandled = false
         val record = if (resume) history.find(mediaUri.toString()) else null
@@ -79,9 +78,9 @@ class VideoPlaybackSession(
         completionMode: VideoCompletionMode = VideoCompletionMode.PLAY_NEXT
     ) {
         checkActive()
-        pendingProgressSave?.join()
         require(mediaUris.isNotEmpty()) { "Playback queue cannot be empty." }
         require(startIndex in mediaUris.indices) { "Start index is outside the playback queue." }
+        saveCurrentBeforeSwitch()
         queue = mediaUris.toList()
         this.completionMode = completionMode
         completionHandled = false
@@ -103,10 +102,7 @@ class VideoPlaybackSession(
         currentRecord()?.let { history.save(it) }
     }
 
-    /**
-     * Saves the final position before releasing both player and database.
-     * This is suspendable so the host can await persistence during teardown.
-     */
+    /** Saves the final position before releasing both player and database. */
     suspend fun release() {
         if (released) return
         pendingProgressSave?.join()
@@ -118,11 +114,20 @@ class VideoPlaybackSession(
         scope.cancel()
     }
 
+    private suspend fun saveCurrentBeforeSwitch() {
+        pendingProgressSave?.join()
+        currentRecord()?.let { history.save(it) }
+    }
+
     private fun persistCurrentProgress() {
         if (released) return
         val record = currentRecord() ?: return
         if (record.positionMs <= 0L) return
-        pendingProgressSave = scope.launch { history.save(record) }
+        val previousSave = pendingProgressSave
+        pendingProgressSave = scope.launch {
+            previousSave?.join()
+            history.save(record)
+        }
     }
 
     private fun currentRecord(): VideoPlaybackRecord? {

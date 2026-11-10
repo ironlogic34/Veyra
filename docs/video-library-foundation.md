@@ -1,98 +1,54 @@
-# Video library foundation
+# Video library and playback foundation
 
-## Device-library permission
+## Device-library permission and folders
 
-`VideoAccessPermission` centralizes version-specific permission rules:
+`VideoAccessPermission` centralizes version-specific video permission rules. Android 14+ distinguishes full access from selected-video access; Android 13 requests video access; Android 12 and earlier use external-storage read permission. Veyra does not request image or audio permissions.
 
-- Android 14+ (API 34+): requests `READ_MEDIA_VIDEO` and `READ_MEDIA_VISUAL_USER_SELECTED`. Full and selected-video-only access are represented separately.
-- Android 13 (API 33): requests `READ_MEDIA_VIDEO`.
-- Android 12 and earlier: requests `READ_EXTERNAL_STORAGE`.
+The Storage Access Framework folder picker takes persistable read grants. `SafVideoFolderDataSource` recursively scans selected folders using content URIs, never guessed filesystem paths. Saved grants can be removed by releasing them.
 
-Veyra does not request image or audio permissions. Permission prompts occur only after the user chooses to grant or manage video access. Selected-video access is never mislabeled as full-library access.
+## Library data and query
 
-## User-selected folders
+`VideoLibraryRepository` combines MediaStore results with saved SAF folders. A failure in one source does not discard successful results from another. Results are deduplicated by exact content URI.
 
-`OpenDocumentTree` launches Android's Storage Access Framework picker. Veyra takes a persistable read grant and reloads the OS-maintained persisted grant list on later launches.
+`VideoLibraryQuery` supports case-insensitive name/folder search, exact MIME filtering, and eight deterministic sort orders. `VideoLibraryControls` provides caller-owned search, sort, and optional MIME filters. The phone and tablet screens remain separate consumers of this shared logic.
 
-`SafVideoFolderDataSource` recursively walks child documents, detects video MIME types, and returns content URIs. It never converts document URIs into filesystem paths. A folder grant can be removed by releasing it.
+## Thumbnail and metadata
 
-Some SAF providers do not expose duration in their document cursor, so SAF items currently use a duration of zero until metadata is loaded for that item.
+`VideoThumbnailDataSource` extracts preview frames from content URIs on IO and uses a bounded in-memory LRU cache. `VideoMetadataRepository` enriches missing duration, resolution, rotation, and bitrate fields with bounded concurrency. Display formatters handle duration, resolution, and file size.
 
-## Library repository
+## Playback session and host integration
 
-`VideoLibraryRepository` combines MediaStore results (when device-library access exists) with each saved SAF folder. A failure in one source does not discard successful results from other sources.
+`VideoPlaybackEngine` wraps Media3 ExoPlayer and supports single-item playback, queues, transport operations, listeners, and snapshots.
 
-Results are deduplicated by exact content URI, then sorted newest-first with a case-insensitive filename tie-breaker. Different provider URIs for the same underlying file may still appear as separate entries; Veyra does not guess identity from filenames.
+`VideoPlaybackSession` connects the player to SQLite history and completion policies:
 
-## Library search and sorting
+- Opening an item or queue restores a valid saved position when enabled.
+- Switching to another item saves the outgoing item's current position before replacing the media.
+- Pause and lifecycle callbacks persist non-zero progress.
+- Progress writes are serialized so an older asynchronous save cannot overwrite a newer one.
+- Completion records the item and applies Stop, Repeat, or Play Next.
+- Session release awaits the final save before releasing ExoPlayer and closing the history store.
 
-`VideoLibraryQuery` provides pure, UI-independent collection operations:
+The Activity creates one session outside Compose recomposition and attaches `VideoPlaybackSessionLifecycle`. The lifecycle bridge saves progress on pause and requests final release on Activity destruction. Its owner scope outlives the Activity, so release can finish during configuration changes. A recreated Activity creates a new session and restores the previous position from SQLite.
 
-- Case-insensitive search across display names and relative folder paths.
-- Optional exact MIME-type filtering.
-- Newest/oldest, name A–Z/Z–A, duration shortest/longest, and file size smallest/largest sorting.
-- Deterministic tie-breaks and no mutation of the source list.
+The current functional host now opens a tapped library item as the start of a queue, resumes its saved position, displays `VideoPlaybackContent`, and returns to the library with playback paused. The playback content is a neutral building block; final phone and tablet arrangements remain independent design work.
 
-`VideoLibraryControls` provides reusable search, sort, and optional MIME filter controls. The screen owns the query, sort, and selected MIME-type state. A null MIME selection means all formats; a non-null set is an exact allow-list, including an empty set that intentionally matches no items. Filter labels and MIME groups are supplied by the caller rather than assuming a fixed format list.
+## Player surface and controls
 
-Phone and tablet interfaces consume the shared logic through their own separate UI implementations.
+`VideoPlayerSurface` attaches the session-owned player to Media3 PlayerView and detaches the view without releasing the player. `VideoPlaybackContent` observes player state and connects the surface to reusable play/pause and seek controls. Screen owners retain control over placement and styling.
 
-## Thumbnail loading and presentation
+## Playback history
 
-`VideoThumbnailDataSource` extracts preview frames from content URIs on the IO dispatcher, with scaled extraction where supported and a bounded in-memory LRU cache.
+`VideoPlaybackHistoryStore` persists records by exact content URI in SQLite. It supports save/update, lookup, recent-history queries, individual deletion, and clearing history. Database work runs on IO. Schema upgrades require explicit migrations and never silently discard history.
 
-`VideoThumbnailFrame` is a reusable Compose preview frame with configurable aspect ratio, shape, and fallback surface. `VideoTransportControls` provides a reusable play/pause and seek surface while leaving placement and styling to each device layout.
+## Still remaining for playback completion
 
-## Metadata loading and enrichment
+- Background playback service and foreground notification.
+- Lock-screen and Bluetooth media-session controls.
+- Subtitle selection, orientation/aspect-ratio settings, and other final playback preferences.
+- Full device testing for lifecycle transitions, media-provider revocation, queues, and resume edge cases.
+- Final phone and tablet playback layouts based on the user's supplied designs.
 
-`VideoMetadataDataSource` reads duration, encoded width and height, rotation, bitrate, and container MIME type from a content URI using `MediaMetadataRetriever`. Metadata is loaded on the IO dispatcher.
+## Release work outside playback
 
-`VideoMetadataRepository` enriches a caller-selected batch, preserving valid MediaStore values and filling missing fields from the container. It limits concurrent provider reads to three by default.
-
-`VideoDisplayFormatters` formats duration, display resolution, and file size. Missing or invalid values display as `Unknown`.
-
-## Playback engine, session, and rendering
-
-`VideoPlaybackEngine` wraps AndroidX Media3 ExoPlayer and supports single-item playback, queues, controls, seeking, repeat-one, listeners, and state snapshots.
-
-`VideoPlaybackSession` connects the engine to the SQLite history store and resume/completion policies:
-
-- Opening a video optionally restores a valid saved position.
-- Opening a queue restores the selected video's position.
-- Pausing persists non-zero progress.
-- Reaching the end marks the item completed and applies Stop, Repeat, or Play Next.
-- Session release awaits a final progress save before releasing the player and database.
-
-`VideoPlaybackSessionLifecycle` saves progress on lifecycle pause without automatically pausing playback. Its owner supplies a scope that outlives the lifecycle (such as a ViewModel scope), plus a decision about whether destruction should release the session. This keeps background-playback policy separate from persistence and avoids releasing a session during configuration changes when the owner retains it.
-
-`VideoPlayerSurface` renders the session-owned Media3 player through Compose `AndroidView`. It intentionally has no built-in controls; each device layout owns its control placement and styling. Removing the view detaches the player view but does not release the player.
-
-The playback host must create and retain the session outside recomposition, attach the lifecycle bridge, and release the session when playback is actually finished. Notification, lock-screen, and Bluetooth controls remain separate work.
-
-`VideoLibraryCard` loads and displays a cached thumbnail for one video. `VideoLibraryList` composes those cards in a keyed lazy list and exposes click handling, content padding, spacing, and empty-state text without imposing a screen design. `VideoLibraryControls` provides search, sort, and optional MIME filters without owning screen state. `VideoPlaybackContent` combines the Media3 surface with transport controls and observes player state; it does not create or own the session. The phone and tablet screens can embed these shared pieces in their own distinct layouts.
-
-## Playback history storage
-
-`VideoPlaybackHistoryStore` persists records in `veyra_video_history.db`. It supports save/update, lookup by exact content URI, recent-history queries, individual deletion, and clearing history. Database operations run on the IO dispatcher. Schema changes require explicit migrations; unsupported upgrades refuse to delete history.
-
-## Functional access test screen
-
-The current activity remains a functional access test surface, not the final library UI.
-
-## Data rules
-
-- Use content URIs for media access.
-- Do not rely on filenames or filesystem paths as unique identities.
-- Keep media querying, thumbnail extraction, metadata extraction, and database work off the main thread.
-- Keep permission handling outside data sources.
-- Keep phone and tablet library screens as separate implementations over shared data.
-
-## Not implemented yet
-
-- Integration of the reusable thumbnail card/list and controls into the final library screens.
-- Folder navigation and management UI.
-- Actual playback host wiring and notification/background playback controls.
-- Notification, lock-screen, and Bluetooth controls.
-- Remaining playback settings and subtitle/orientation controls.
-- Final phone and tablet video screens based on the user's exact design specifications.
-- GitHub release signing, APK publishing, and in-app update flow.
+Signed release APK builds, GitHub Releases, and the in-app update checker remain separate V1 release tasks.
