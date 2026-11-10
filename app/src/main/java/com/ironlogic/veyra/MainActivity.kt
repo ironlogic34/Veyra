@@ -1,8 +1,14 @@
 package com.ironlogic.veyra
 
+import android.Manifest
+import android.content.ComponentName
 import android.content.Intent
+import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.IBinder
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -30,34 +36,73 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.ironlogic.veyra.data.video.VideoLibraryRepository
-import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoCompletionMode
+import com.ironlogic.veyra.data.video.VideoItem
+import com.ironlogic.veyra.data.video.VideoLibraryRepository
 import com.ironlogic.veyra.permissions.VideoAccessLevel
 import com.ironlogic.veyra.permissions.VideoAccessPermission
+import com.ironlogic.veyra.playback.VideoPlaybackService
 import com.ironlogic.veyra.playback.VideoPlaybackSession
 import com.ironlogic.veyra.playback.VideoPlaybackSessionLifecycle
 import com.ironlogic.veyra.ui.theme.VeyraTheme
 import com.ironlogic.veyra.ui.video.components.VideoPlaybackContent
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-    private lateinit var playbackSession: VideoPlaybackSession
-    private lateinit var playbackLifecycle: VideoPlaybackSessionLifecycle
+
+    private val playbackSessionState = mutableStateOf<VideoPlaybackSession?>(null)
+    private var playbackLifecycle: VideoPlaybackSessionLifecycle? = null
+    private var serviceBound = false
+
+    private val playbackServiceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            val localBinder = binder as? VideoPlaybackService.LocalBinder ?: return
+            val service = localBinder.getService()
+            val session = service.playbackSession
+            playbackSessionState.value = session
+            playbackLifecycle?.close()
+            playbackLifecycle = VideoPlaybackSessionLifecycle(
+                lifecycle = lifecycle,
+                session = session,
+                ownerScope = playbackOwnerScope,
+                shouldReleaseOnDestroy = { false }
+            )
+        }
+
+        override fun onServiceDisconnected(name: ComponentName?) {
+            playbackLifecycle?.close()
+            playbackLifecycle = null
+            playbackSessionState.value = null
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val serviceIntent = Intent(this, VideoPlaybackService::class.java)
+        startService(serviceIntent)
+        serviceBound = bindService(
+            serviceIntent,
+            playbackServiceConnection,
+            BIND_AUTO_CREATE
+        )
+    }
+
+    override fun onStop() {
+        if (serviceBound) {
+            unbindService(playbackServiceConnection)
+            serviceBound = false
+        }
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        playbackLifecycle?.close()
+        playbackLifecycle = null
+        super.onDestroy()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        playbackSession = VideoPlaybackSession(applicationContext)
-        playbackLifecycle = VideoPlaybackSessionLifecycle(
-            lifecycle = lifecycle,
-            session = playbackSession,
-            ownerScope = playbackOwnerScope,
-            shouldReleaseOnDestroy = { true }
-        )
 
         setContent {
             VeyraTheme {
@@ -68,9 +113,10 @@ class MainActivity : ComponentActivity() {
                 var status by remember { mutableStateOf("Choose how Veyra can access your videos.") }
                 var isLoading by remember { mutableStateOf(false) }
                 val scope = rememberCoroutineScope()
+                val playbackSession = playbackSessionState.value
 
                 fun leavePlayback() {
-                    playbackSession.engine.pause()
+                    playbackSession?.engine?.pause()
                     activeVideo = null
                 }
 
@@ -86,6 +132,10 @@ class MainActivity : ComponentActivity() {
                         VideoAccessLevel.NONE -> "Video permission was not granted. You can still add a folder."
                     }
                 }
+
+                val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.RequestPermission()
+                ) { /* Playback remains available even if notifications are denied. */ }
 
                 val folderPicker = rememberLauncherForActivityResult(
                     ActivityResultContracts.OpenDocumentTree()
@@ -129,6 +179,13 @@ class MainActivity : ComponentActivity() {
 
                 LaunchedEffect(accessLevel, folderUris) { refreshLibrary() }
 
+                LaunchedEffect(videos, playbackSession) {
+                    val currentUri = playbackSession?.engine?.currentMediaUri()
+                    if (currentUri != null) {
+                        activeVideo = videos.firstOrNull { it.contentUri == currentUri }
+                    }
+                }
+
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -150,12 +207,16 @@ class MainActivity : ComponentActivity() {
                                 )
                                 OutlinedButton(onClick = { leavePlayback() }) { Text("Back") }
                             }
-                            VideoPlaybackContent(
-                                session = playbackSession,
-                                modifier = Modifier.fillMaxWidth().weight(1f)
-                            )
+                            if (playbackSession != null) {
+                                VideoPlaybackContent(
+                                    session = playbackSession,
+                                    modifier = Modifier.fillMaxWidth().weight(1f)
+                                )
+                            } else {
+                                Text("Connecting to playback service…")
+                            }
                             Text(
-                                "Playback progress is saved automatically. Returning to the library pauses playback.",
+                                "Playback continues when Veyra is in the background. Use the playback notification or Bluetooth controls.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -214,6 +275,9 @@ class MainActivity : ComponentActivity() {
                                 if (isLoading) Text("Scanning…")
                             }
                             Text(status, style = MaterialTheme.typography.bodySmall)
+                            if (playbackSession == null) {
+                                Text("Starting playback service…", style = MaterialTheme.typography.bodySmall)
+                            }
                             Text("Videos (${videos.size}) · Tap to play", style = MaterialTheme.typography.titleMedium)
                             LazyColumn(
                                 modifier = Modifier.fillMaxWidth().weight(1f),
@@ -224,22 +288,35 @@ class MainActivity : ComponentActivity() {
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {
-                                                scope.launch {
-                                                    try {
-                                                        val queue = videos.map { it.contentUri }
-                                                        val index = videos.indexOfFirst {
-                                                            it.contentUri == video.contentUri
-                                                        }.coerceAtLeast(0)
-                                                        playbackSession.openQueue(
-                                                            mediaUris = queue,
-                                                            startIndex = index,
-                                                            resume = true,
-                                                            completionMode = VideoCompletionMode.PLAY_NEXT
-                                                        )
-                                                        activeVideo = video
-                                                        status = "Playing ${video.displayName}"
-                                                    } catch (_: Exception) {
-                                                        status = "This video could not be opened. Its access may have changed."
+                                                val session = playbackSession
+                                                if (session == null) {
+                                                    status = "Playback service is still starting. Try again in a moment."
+                                                } else {
+                                                    if (
+                                                        Build.VERSION.SDK_INT >= 33 &&
+                                                        checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                                                    ) {
+                                                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                                    }
+                                                    scope.launch {
+                                                        try {
+                                                            val queue = videos.map { it.contentUri }
+                                                            val names = videos.map { it.displayName }
+                                                            val index = videos.indexOfFirst {
+                                                                it.contentUri == video.contentUri
+                                                            }.coerceAtLeast(0)
+                                                            session.openQueue(
+                                                                mediaUris = queue,
+                                                                startIndex = index,
+                                                                resume = true,
+                                                                completionMode = VideoCompletionMode.PLAY_NEXT,
+                                                                displayNames = names
+                                                            )
+                                                            activeVideo = video
+                                                            status = "Playing ${video.displayName}"
+                                                        } catch (_: Exception) {
+                                                            status = "This video could not be opened. Its access may have changed."
+                                                        }
                                                     }
                                                 }
                                             }
@@ -268,9 +345,11 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         /**
-         * Outlives an Activity instance so lifecycle-triggered final progress
-         * saves and player release can finish during configuration changes.
+         * Lifecycle progress writes may outlive an Activity instance.
+         * The service, not the Activity, owns final player release.
          */
-        val playbackOwnerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        val playbackOwnerScope = kotlinx.coroutines.CoroutineScope(
+            kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate
+        )
     }
 }
