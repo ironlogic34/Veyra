@@ -28,15 +28,17 @@ Results are deduplicated by exact content URI, then sorted newest-first with a c
 
 `VideoThumbnailDataSource` extracts a preview frame from content URIs, including SAF document URIs, on the IO dispatcher. It uses scaled frame extraction where supported and a bounded in-memory LRU cache. Thumbnails are not persisted to disk. A revoked grant or unsupported provider returns no thumbnail rather than crashing the library.
 
-## Metadata loading
+## Metadata loading and enrichment
 
-`VideoMetadataDataSource` reads duration, encoded width and height, rotation, bitrate, and container MIME type from a content URI using `MediaMetadataRetriever`. This fills gaps left by SAF providers that do not report duration in their document cursor. Metadata is loaded on the IO dispatcher and a provider failure returns no metadata instead of aborting the library scan.
+`VideoMetadataDataSource` reads duration, encoded width and height, rotation, bitrate, and container MIME type from a content URI using `MediaMetadataRetriever`. Metadata is loaded on the IO dispatcher.
 
-Metadata loading is deliberately separate from the initial folder scan. The UI can request it for visible or selected items later, rather than opening every video during every library refresh.
+`VideoMetadataRepository` enriches a caller-selected batch, preserving valid MediaStore values and filling missing fields from the container. It limits concurrent provider reads to three by default. The caller should request metadata for visible or selected items rather than the entire library during every refresh.
+
+A provider failure returns the original item unchanged. One inaccessible video therefore does not abort enrichment of the rest of the batch.
 
 ## Functional access test screen
 
-The temporary screen can request/manage device video permission, add folders, list/remove saved grants, refresh and merge library results, and report revoked access or scan errors. It is a functional test surface, not the final phone or tablet UI.
+The temporary screen can request/manage device video permission, add folders, list/remove saved grants, refresh and merge library results, and report revoked access or scan errors. This is a functional test surface, not the final library UI.
 
 ## Data rules
 

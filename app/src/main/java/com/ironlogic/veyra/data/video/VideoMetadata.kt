@@ -16,3 +16,13 @@ internal object VideoMetadataParser {
 
     fun parseInt(value: String?): Int? = value?.toIntOrNull()?.takeIf { it >= 0 }
 }
+
+/** Adds extracted values without replacing valid information already indexed by Android. */
+internal fun VideoItem.withMetadata(metadata: VideoMetadata): VideoItem = copy(
+    durationMs = durationMs.takeIf { it > 0L } ?: metadata.durationMs ?: durationMs,
+    width = width ?: metadata.width,
+    height = height ?: metadata.height,
+    rotationDegrees = rotationDegrees ?: metadata.rotationDegrees,
+    bitrateBitsPerSecond = bitrateBitsPerSecond ?: metadata.bitrateBitsPerSecond,
+    mimeType = mimeType ?: metadata.mimeType
+)

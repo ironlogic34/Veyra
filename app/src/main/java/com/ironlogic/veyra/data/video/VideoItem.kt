@@ -6,7 +6,8 @@ import android.net.Uri
  * A locally indexed video item.
  *
  * The content URI is the playback/access handle. A filename or filesystem path
- * is not treated as a stable media identity.
+ * is not treated as a stable media identity. Optional technical fields are
+ * populated by on-demand metadata extraction.
  */
 data class VideoItem(
     val contentUri: Uri,
@@ -15,5 +16,9 @@ data class VideoItem(
     val sizeBytes: Long,
     val dateModifiedSeconds: Long,
     val mimeType: String?,
-    val relativePath: String?
+    val relativePath: String?,
+    val width: Int? = null,
+    val height: Int? = null,
+    val rotationDegrees: Int? = null,
+    val bitrateBitsPerSecond: Long? = null
 )
