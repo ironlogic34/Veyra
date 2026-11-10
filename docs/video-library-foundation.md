@@ -51,6 +51,18 @@ A provider failure returns the original item unchanged. One inaccessible video t
 
 `VideoDisplayFormatters` provides Android-UI-independent formatting for duration, display resolution, and file size. Missing or invalid values display as `Unknown`. Quarter-turn video rotation is reflected in the displayed resolution, and file sizes use binary units (KiB, MiB, GiB).
 
+## Playback history and resume rules
+
+`VideoPlaybackRecord` models progress using the media content URI as its identity. `VideoResumePolicy` validates matching, incomplete history and rejects invalid end positions. It also creates normalized progress and completion records.
+
+This is currently a pure domain model and policy, not durable storage. A database-backed history repository and migrations remain a separate implementation step.
+
+## Playback completion behavior
+
+`VideoCompletionPolicy` resolves the configured Stop, Repeat, or Play Next behavior against a queue of content URIs. Play Next safely stops at the end of the queue, and invalid queue positions never produce an invalid playback target.
+
+The policy is independent of the playback engine and UI. The player integration will call it when a video reaches its completion event.
+
 ## Functional access test screen
 
 The temporary screen can request/manage device video permission, add folders, list/remove saved grants, refresh and merge library results, and report revoked access or scan errors. This is a functional test surface, not the final library UI.
@@ -67,5 +79,5 @@ The temporary screen can request/manage device video permission, add folders, li
 
 - Thumbnail presentation in the library UI
 - Folder navigation and UI controls for search, sorting, and filtering
-- Database-backed playback history and resume positions
-- Playback engine
+- Durable playback-history storage and resume-position persistence
+- Playback engine and player integration
