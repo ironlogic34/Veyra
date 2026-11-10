@@ -48,6 +48,7 @@ The functional host opens a tapped library item as the start of a queue, resumes
 - A service owns the playback session, so Activity navigation and recreation do not release the player.
 - A foreground media-playback notification exposes previous, play/pause, and next controls.
 - A Media3 MediaSession publishes transport state to Android lock-screen, headset, and Bluetooth media controls.
+- ExoPlayer handles audio focus and uses a local wake lock while active playback runs with the screen off; the permission is declared and the foreground service provides the required playback context.
 - Queue items include display titles for system playback surfaces.
 
 ### Phase 2: in-player features and preferences
