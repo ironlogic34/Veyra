@@ -36,6 +36,10 @@ Results are deduplicated by exact content URI, then sorted newest-first with a c
 
 A provider failure returns the original item unchanged. One inaccessible video therefore does not abort enrichment of the rest of the batch.
 
+## Metadata display formatting
+
+`VideoDisplayFormatters` provides Android-UI-independent formatting for duration, display resolution, and file size. Missing or invalid values display as `Unknown`. Quarter-turn video rotation is reflected in the displayed resolution, and file sizes use binary units (KiB, MiB, GiB).
+
 ## Functional access test screen
 
 The temporary screen can request/manage device video permission, add folders, list/remove saved grants, refresh and merge library results, and report revoked access or scan errors. This is a functional test surface, not the final library UI.
