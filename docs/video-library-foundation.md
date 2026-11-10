@@ -55,7 +55,7 @@ A provider failure returns the original item unchanged. One inaccessible video t
 
 `VideoPlaybackRecord` models progress using the media content URI as its identity. `VideoResumePolicy` validates matching, incomplete history and rejects invalid end positions. It also creates normalized progress and completion records.
 
-This is currently a pure domain model and policy, not durable storage. A database-backed history repository and migrations remain a separate implementation step.
+`VideoPlaybackHistoryStore` persists records in a local SQLite database. It supports save/update, lookup by exact content URI, recent-history queries, individual deletion, and clearing history. Database operations run on the IO dispatcher. The schema uses constraints and a last-played index. Future schema changes must add explicit migrations; the store intentionally refuses an unsupported upgrade rather than deleting user history.
 
 ## Playback completion behavior
 
@@ -71,7 +71,7 @@ The temporary screen can request/manage device video permission, add folders, li
 
 - Use content URIs for media access.
 - Do not rely on filenames or filesystem paths as unique identities.
-- Keep media querying, thumbnail extraction, and metadata extraction off the main thread.
+- Keep media querying, thumbnail extraction, metadata extraction, and database work off the main thread.
 - Keep permission handling outside data sources.
 - Phone and tablet library screens remain separate UI implementations over shared data.
 
@@ -79,5 +79,5 @@ The temporary screen can request/manage device video permission, add folders, li
 
 - Thumbnail presentation in the library UI
 - Folder navigation and UI controls for search, sorting, and filtering
-- Durable playback-history storage and resume-position persistence
-- Playback engine and player integration
+- Playback-engine integration and end-to-end resume behavior
+- UI controls for completion behavior
