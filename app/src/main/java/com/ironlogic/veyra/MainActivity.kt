@@ -261,11 +261,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    override fun onDestroy() {
-        playbackLifecycle.close()
-        super.onDestroy()
-    }
-
     private fun readPersistedFolderUris(): List<Uri> =
         contentResolver.persistedUriPermissions
             .filter { it.isReadPermission }

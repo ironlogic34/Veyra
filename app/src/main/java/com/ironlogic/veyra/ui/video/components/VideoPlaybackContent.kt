@@ -1,6 +1,7 @@
 package com.ironlogic.veyra.ui.video.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.ironlogic.veyra.playback.VideoPlaybackSession
-import com.ironlogic.veyra.playback.VideoPlayerSnapshot
 import kotlinx.coroutines.delay
 
 /**
@@ -55,7 +55,7 @@ fun VideoPlaybackContent(
     ) {
         VideoPlayerSurface(
             player = player,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
         )
         VideoTransportControls(
             isPlaying = snapshot.isPlaying,
