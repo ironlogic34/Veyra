@@ -29,9 +29,9 @@ The Storage Access Framework folder picker takes persistable read grants. `SafVi
 - Completion records the item and applies Stop, Repeat, or Play Next.
 - Session release awaits the final save before releasing ExoPlayer and closing the history store.
 
-The Activity creates one session outside Compose recomposition and attaches `VideoPlaybackSessionLifecycle`. The lifecycle bridge saves progress on pause and requests final release on Activity destruction. Its owner scope outlives the Activity, so release can finish during configuration changes. A recreated Activity creates a new session and restores the previous position from SQLite.
+The started and bound `VideoPlaybackService` owns one session independently of the Activity. The Activity binds to the service and attaches `VideoPlaybackSessionLifecycle` only for progress persistence; Activity destruction does not release the player. The service releases the session when Android destroys the service. Queue items carry display titles so system playback surfaces can identify the current video.
 
-The current functional host now opens a tapped library item as the start of a queue, resumes its saved position, displays `VideoPlaybackContent`, and returns to the library with playback paused. The playback content is a neutral building block; final phone and tablet arrangements remain independent design work.
+The functional host opens a tapped library item as the start of a queue, resumes its saved position, displays `VideoPlaybackContent`, and returns to the library with playback paused. Leaving the Activity in the background does not pause the player. The playback content remains a neutral building block; final phone and tablet arrangements remain independent design work.
 
 ## Player surface and controls
 
@@ -41,12 +41,26 @@ The current functional host now opens a tapped library item as the start of a qu
 
 `VideoPlaybackHistoryStore` persists records by exact content URI in SQLite. It supports save/update, lookup, recent-history queries, individual deletion, and clearing history. Database work runs on IO. Schema upgrades require explicit migrations and never silently discard history.
 
-## Still remaining for playback completion
+## Playback feature phases
 
-- Background playback service and foreground notification.
-- Lock-screen and Bluetooth media-session controls.
-- Subtitle selection, orientation/aspect-ratio settings, and other final playback preferences.
-- Full device testing for lifecycle transitions, media-provider revocation, queues, and resume edge cases.
+### Phase 1: background and system controls
+
+- A service owns the playback session, so Activity navigation and recreation do not release the player.
+- A foreground media-playback notification exposes previous, play/pause, and next controls.
+- A Media3 MediaSession publishes transport state to Android lock-screen, headset, and Bluetooth media controls.
+- Notification permission is requested on Android 13+ when playback is started; in-app playback remains available if permission is denied.
+- Queue items include display titles for system playback surfaces.
+
+### Phase 2: in-player features and preferences
+
+- Subtitle track selection.
+- Aspect-ratio and screen-orientation controls.
+- Playback lock and sleep timer.
+- Persistent playback preferences and remaining confirmed controls.
+
+### Validation still required
+
+- Full device testing for background playback, notification permission states, Bluetooth/headset controls, lifecycle transitions, media-provider revocation, queues, and resume edge cases.
 - Final phone and tablet playback layouts based on the user's supplied designs.
 
 ## Release work outside playback
