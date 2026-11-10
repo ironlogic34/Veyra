@@ -25,7 +25,6 @@ fun VideoPlayerSurface(
                 useController = false
                 this.resizeMode = resizeMode
                 setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
-                keepContentOnPlayerReset = true
             }
         },
         update = { view ->
