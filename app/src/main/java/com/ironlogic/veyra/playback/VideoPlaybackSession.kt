@@ -75,7 +75,8 @@ class VideoPlaybackSession(
         mediaUris: List<Uri>,
         startIndex: Int = 0,
         resume: Boolean = true,
-        completionMode: VideoCompletionMode = VideoCompletionMode.PLAY_NEXT
+        completionMode: VideoCompletionMode = VideoCompletionMode.PLAY_NEXT,
+        displayNames: List<String> = emptyList()
     ) {
         checkActive()
         require(mediaUris.isNotEmpty()) { "Playback queue cannot be empty." }
@@ -88,7 +89,13 @@ class VideoPlaybackSession(
         val record = if (resume) history.find(selectedUri.toString()) else null
         val position = VideoResumePolicy.resumePosition(record, selectedUri.toString()) ?: 0L
         engine.setRepeatOne(false)
-        engine.prepareQueue(queue, startIndex, position, playWhenReady = true)
+        engine.prepareQueue(
+            queue,
+            startIndex,
+            position,
+            playWhenReady = true,
+            displayNames = displayNames
+        )
     }
 
     fun setCompletionMode(mode: VideoCompletionMode) {
