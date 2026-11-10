@@ -33,47 +33,43 @@ Results are deduplicated by exact content URI, then sorted newest-first with a c
 - Newest/oldest, name A–Z/Z–A, duration shortest/longest, and file size smallest/largest sorting.
 - Deterministic tie-breaks and no mutation of the source list.
 
-The query layer is not connected to a screen yet. Phone and tablet interfaces will consume the shared logic through their own separate UI implementations.
+Phone and tablet interfaces consume the shared logic through their own separate UI implementations.
 
-## Thumbnail loading
+## Thumbnail loading and presentation
 
-`VideoThumbnailDataSource` extracts a preview frame from content URIs, including SAF document URIs, on the IO dispatcher. It uses scaled frame extraction where supported and a bounded in-memory LRU cache. Thumbnails are not persisted to disk. A revoked grant or unsupported provider returns no thumbnail rather than crashing the library.
+`VideoThumbnailDataSource` extracts preview frames from content URIs on the IO dispatcher, with scaled extraction where supported and a bounded in-memory LRU cache.
 
-`VideoThumbnailFrame` is the first reusable Compose video component. It provides an overridable aspect ratio, shape, and fallback surface while leaving thumbnail rendering and all screen-specific geometry to its caller.
+`VideoThumbnailFrame` is a reusable Compose preview frame with configurable aspect ratio, shape, and fallback surface. `VideoTransportControls` provides a reusable play/pause and seek surface while leaving placement and styling to each device layout.
 
 ## Metadata loading and enrichment
 
 `VideoMetadataDataSource` reads duration, encoded width and height, rotation, bitrate, and container MIME type from a content URI using `MediaMetadataRetriever`. Metadata is loaded on the IO dispatcher.
 
-`VideoMetadataRepository` enriches a caller-selected batch, preserving valid MediaStore values and filling missing fields from the container. It limits concurrent provider reads to three by default. The caller should request metadata for visible or selected items rather than the entire library during every refresh.
+`VideoMetadataRepository` enriches a caller-selected batch, preserving valid MediaStore values and filling missing fields from the container. It limits concurrent provider reads to three by default.
 
-A provider failure returns the original item unchanged. One inaccessible video therefore does not abort enrichment of the rest of the batch.
+`VideoDisplayFormatters` formats duration, display resolution, and file size. Missing or invalid values display as `Unknown`.
 
-## Metadata display formatting
+## Playback engine and session
 
-`VideoDisplayFormatters` provides Android-UI-independent formatting of duration, display resolution, and file size. Missing or invalid values display as `Unknown`. Quarter-turn video rotation is reflected in the displayed resolution, and file sizes use binary units (KiB, MiB, GiB).
+`VideoPlaybackEngine` wraps AndroidX Media3 ExoPlayer and supports single-item playback, queues, controls, seeking, repeat-one, listeners, and state snapshots.
 
-## Playback engine
+`VideoPlaybackSession` now connects the engine to the SQLite history store and the existing resume/completion policies:
 
-`VideoPlaybackEngine` wraps AndroidX Media3 ExoPlayer and accepts content URIs directly. It supports single-item playback, queue preparation, play/pause/toggle, seeking, repeat-one, listener registration, and point-in-time state snapshots.
+- Opening a video optionally restores a valid saved position.
+- Opening a queue restores the selected video's position.
+- Pausing persists non-zero progress.
+- Reaching the end marks the item completed and applies Stop, Repeat, or Play Next.
+- Session release awaits a final progress save before releasing the player and database.
 
-The engine is main-thread owned and must be released by its session owner. It does not yet own lifecycle policy, persistence, resume decisions, completion routing, notification controls, or the final playback UI. Those remain separate integration steps.
+The host must call `saveProgress()` when it enters a background/paused state and await `release()` when the session is finished. Periodic checkpoints, lifecycle integration, and notification/background playback remain follow-up work.
 
-## Playback history and resume rules
+## Playback history storage
 
-`VideoPlaybackRecord` models progress using the media content URI as its identity. `VideoResumePolicy` validates matching, incomplete history and rejects invalid end positions. It also creates normalized progress and completion records.
-
-`VideoPlaybackHistoryStore` persists records in a local SQLite database. It supports save/update, lookup by exact content URI, recent-history queries, individual deletion, and clearing history. Database operations run on the IO dispatcher. The schema uses constraints and a last-played index. Future schema changes must add explicit migrations; the store intentionally refuses an unsupported upgrade rather than deleting user history.
-
-## Playback completion behavior
-
-`VideoCompletionPolicy` resolves the configured Stop, Repeat, or Play Next behavior against a queue of content URIs. Play Next safely stops at the end of the queue, and invalid queue positions never produce an invalid playback target.
-
-The playback engine is now available as a separate layer; connecting completion events to this policy remains a follow-up integration step.
+`VideoPlaybackHistoryStore` persists records in `veyra_video_history.db`. It supports save/update, lookup by exact content URI, recent-history queries, individual deletion, and clearing history. Database operations run on the IO dispatcher. Schema changes require explicit migrations; unsupported upgrades refuse to delete history.
 
 ## Functional access test screen
 
-The temporary screen can request/manage device video permission, add folders, list/remove saved grants, refresh and merge library results, and report revoked access or scan errors. This is a functional test surface, not the final library UI.
+The current activity remains a functional access test surface, not the final library UI.
 
 ## Data rules
 
@@ -81,13 +77,12 @@ The temporary screen can request/manage device video permission, add folders, li
 - Do not rely on filenames or filesystem paths as unique identities.
 - Keep media querying, thumbnail extraction, metadata extraction, and database work off the main thread.
 - Keep permission handling outside data sources.
-- Keep phone and tablet library screens as separate UI implementations over shared data.
+- Keep phone and tablet library screens as separate implementations over shared data.
 
 ## Not implemented yet
 
-- Thumbnail presentation in the library UI.
+- Thumbnail presentation in the library.
 - Folder navigation and UI controls for search, sorting, and filtering.
-- Playback-history persistence connected to real player events.
-- Resume and completion policies connected to the player.
-- Lifecycle-safe playback sessions and background/notification controls.
-- Separate final phone and tablet video screens based on the user's design specifications.
+- Periodic playback checkpoints and lifecycle/background session integration.
+- Notification, lock-screen, and Bluetooth controls.
+- Final phone and tablet video screens based on the user's design specifications.

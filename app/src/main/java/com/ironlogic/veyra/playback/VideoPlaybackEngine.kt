@@ -13,9 +13,6 @@ import androidx.media3.exoplayer.ExoPlayer
  *
  * Create and control this class on the main thread. The owner is responsible
  * for calling [close] when the playback session is finished.
- *
- * Persistence, resume decisions, completion policy, and UI state collection
- * are deliberately kept outside this low-level player wrapper.
  */
 @MainThread
 class VideoPlaybackEngine(context: Context) : AutoCloseable {
@@ -31,7 +28,6 @@ class VideoPlaybackEngine(context: Context) : AutoCloseable {
         playWhenReady: Boolean = true
     ) {
         require(startPositionMs >= 0L) { "Start position cannot be negative." }
-
         exoPlayer.setMediaItem(MediaItem.fromUri(mediaUri), startPositionMs)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = playWhenReady
@@ -47,50 +43,29 @@ class VideoPlaybackEngine(context: Context) : AutoCloseable {
         require(mediaUris.isNotEmpty()) { "Playback queue cannot be empty." }
         require(startIndex in mediaUris.indices) { "Start index is outside the playback queue." }
         require(startPositionMs >= 0L) { "Start position cannot be negative." }
-
-        exoPlayer.setMediaItems(
-            mediaUris.map(MediaItem::fromUri),
-            startIndex,
-            startPositionMs
-        )
+        exoPlayer.setMediaItems(mediaUris.map(MediaItem::fromUri), startIndex, startPositionMs)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = playWhenReady
     }
 
-    @MainThread
-    fun play() {
-        exoPlayer.play()
-    }
-
-    @MainThread
-    fun pause() {
-        exoPlayer.pause()
-    }
-
-    @MainThread
-    fun togglePlayback() {
+    @MainThread fun play() = exoPlayer.play()
+    @MainThread fun pause() = exoPlayer.pause()
+    @MainThread fun togglePlayback() {
         if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
     }
-
-    @MainThread
-    fun seekTo(positionMs: Long) {
-        exoPlayer.seekTo(positionMs.coerceAtLeast(0L))
-    }
+    @MainThread fun seekTo(positionMs: Long) = exoPlayer.seekTo(positionMs.coerceAtLeast(0L))
+    @MainThread fun seekToNextMediaItem() = exoPlayer.seekToNextMediaItem()
+    @MainThread fun currentMediaItemIndex(): Int = exoPlayer.currentMediaItemIndex
+    @MainThread fun currentMediaUri(): Uri? =
+        exoPlayer.currentMediaItem?.localConfiguration?.uri
 
     @MainThread
     fun setRepeatOne(enabled: Boolean) {
         exoPlayer.repeatMode = if (enabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
     }
 
-    @MainThread
-    fun addListener(listener: Player.Listener) {
-        exoPlayer.addListener(listener)
-    }
-
-    @MainThread
-    fun removeListener(listener: Player.Listener) {
-        exoPlayer.removeListener(listener)
-    }
+    @MainThread fun addListener(listener: Player.Listener) = exoPlayer.addListener(listener)
+    @MainThread fun removeListener(listener: Player.Listener) = exoPlayer.removeListener(listener)
 
     @MainThread
     fun snapshot(): VideoPlayerSnapshot {
@@ -111,7 +86,6 @@ class VideoPlaybackEngine(context: Context) : AutoCloseable {
     }
 }
 
-/** A read-only point-in-time view of the underlying player's state. */
 data class VideoPlayerSnapshot(
     val isPlaying: Boolean,
     val playbackState: Int,
