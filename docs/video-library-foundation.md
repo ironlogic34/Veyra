@@ -48,7 +48,6 @@ The functional host opens a tapped library item as the start of a queue, resumes
 - A service owns the playback session, so Activity navigation and recreation do not release the player.
 - A foreground media-playback notification exposes previous, play/pause, and next controls.
 - A Media3 MediaSession publishes transport state to Android lock-screen, headset, and Bluetooth media controls.
-- Notification permission is requested on Android 13+ when playback is started; in-app playback remains available if permission is denied.
 - Queue items include display titles for system playback surfaces.
 
 ### Phase 2: in-player features and preferences
@@ -60,7 +59,7 @@ The functional host opens a tapped library item as the start of a queue, resumes
 
 ### Validation still required
 
-- Full device testing for background playback, notification permission states, Bluetooth/headset controls, lifecycle transitions, media-provider revocation, queues, and resume edge cases.
+- Full device testing for background playback, media notification visibility, Bluetooth/headset controls, lifecycle transitions, media-provider revocation, queues, and resume edge cases.
 - Final phone and tablet playback layouts based on the user's supplied designs.
 
 ## Release work outside playback
