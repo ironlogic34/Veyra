@@ -284,7 +284,8 @@ class MainActivity : ComponentActivity() {
                                                 val session = playbackSession
                                                 if (session == null) {
                                                     status = "Playback service is still starting. Try again in a moment."
-                                                } else {                                                    scope.launch {
+                                                } else {
+                                                    scope.launch {
                                                         try {
                                                             val queue = videos.map { it.contentUri }
                                                             val names = videos.map { it.displayName }
