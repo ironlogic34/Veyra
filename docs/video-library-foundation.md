@@ -49,11 +49,11 @@ Phone and tablet interfaces consume the shared logic through their own separate 
 
 `VideoDisplayFormatters` formats duration, display resolution, and file size. Missing or invalid values display as `Unknown`.
 
-## Playback engine and session
+## Playback engine, session, and rendering
 
 `VideoPlaybackEngine` wraps AndroidX Media3 ExoPlayer and supports single-item playback, queues, controls, seeking, repeat-one, listeners, and state snapshots.
 
-`VideoPlaybackSession` now connects the engine to the SQLite history store and the existing resume/completion policies:
+`VideoPlaybackSession` connects the engine to the SQLite history store and resume/completion policies:
 
 - Opening a video optionally restores a valid saved position.
 - Opening a queue restores the selected video's position.
@@ -61,7 +61,11 @@ Phone and tablet interfaces consume the shared logic through their own separate 
 - Reaching the end marks the item completed and applies Stop, Repeat, or Play Next.
 - Session release awaits a final progress save before releasing the player and database.
 
-The host must call `saveProgress()` when it enters a background/paused state and await `release()` when the session is finished. Periodic checkpoints, lifecycle integration, and notification/background playback remain follow-up work.
+`VideoPlaybackSessionLifecycle` saves progress on lifecycle pause without automatically pausing playback. Its owner supplies a scope that outlives the lifecycle (such as a ViewModel scope), plus a decision about whether destruction should release the session. This keeps background-playback policy separate from persistence and avoids releasing a session during configuration changes when the owner retains it.
+
+`VideoPlayerSurface` renders the session-owned Media3 player through Compose `AndroidView`. It intentionally has no built-in controls; each device layout owns its control placement and styling. Removing the view detaches the player view but does not release the player.
+
+The playback host must create and retain the session outside recomposition, attach the lifecycle bridge, and release the session when playback is actually finished. Notification, lock-screen, and Bluetooth controls remain separate work.
 
 ## Playback history storage
 
@@ -83,6 +87,6 @@ The current activity remains a functional access test surface, not the final lib
 
 - Thumbnail presentation in the library.
 - Folder navigation and UI controls for search, sorting, and filtering.
-- Periodic playback checkpoints and lifecycle/background session integration.
+- Actual playback host wiring and notification/background playback controls.
 - Notification, lock-screen, and Bluetooth controls.
 - Final phone and tablet video screens based on the user's design specifications.
