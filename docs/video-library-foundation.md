@@ -24,6 +24,17 @@ Some SAF providers do not expose duration in their document cursor, so SAF items
 
 Results are deduplicated by exact content URI, then sorted newest-first with a case-insensitive filename tie-breaker. Different provider URIs for the same underlying file may still appear as separate entries; Veyra does not guess identity from filenames.
 
+## Library search and sorting
+
+`VideoLibraryQuery` provides pure, UI-independent collection operations:
+
+- Case-insensitive search across display names and relative folder paths.
+- Optional exact MIME-type filtering.
+- Newest/oldest, name A–Z/Z–A, duration shortest/longest, and file size smallest/largest sorting.
+- Deterministic tie-breaks and no mutation of the source list.
+
+The query layer is not connected to a screen yet. Phone and tablet interfaces will consume the shared logic through their own separate UI implementations.
+
 ## Thumbnail loading
 
 `VideoThumbnailDataSource` extracts a preview frame from content URIs, including SAF document URIs, on the IO dispatcher. It uses scaled frame extraction where supported and a bounded in-memory LRU cache. Thumbnails are not persisted to disk. A revoked grant or unsupported provider returns no thumbnail rather than crashing the library.
@@ -55,6 +66,6 @@ The temporary screen can request/manage device video permission, add folders, li
 ## Not implemented yet
 
 - Thumbnail presentation in the library UI
-- Search, sorting, filtering, and folder navigation UI
+- Folder navigation and UI controls for search, sorting, and filtering
 - Database-backed playback history and resume positions
 - Playback engine
