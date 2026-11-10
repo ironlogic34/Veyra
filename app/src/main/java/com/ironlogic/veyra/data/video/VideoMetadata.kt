@@ -17,12 +17,40 @@ internal object VideoMetadataParser {
     fun parseInt(value: String?): Int? = value?.toIntOrNull()?.takeIf { it >= 0 }
 }
 
-/** Adds extracted values without replacing valid information already indexed by Android. */
-internal fun VideoItem.withMetadata(metadata: VideoMetadata): VideoItem = copy(
-    durationMs = durationMs.takeIf { it > 0L } ?: metadata.durationMs ?: durationMs,
-    width = width ?: metadata.width,
-    height = height ?: metadata.height,
-    rotationDegrees = rotationDegrees ?: metadata.rotationDegrees,
-    bitrateBitsPerSecond = bitrateBitsPerSecond ?: metadata.bitrateBitsPerSecond,
-    mimeType = mimeType ?: metadata.mimeType
+/** Merges extracted metadata while preserving every valid indexed value. */
+internal fun mergeVideoMetadata(
+    indexedDurationMs: Long,
+    indexedWidth: Int?,
+    indexedHeight: Int?,
+    indexedRotationDegrees: Int?,
+    indexedBitrateBitsPerSecond: Long?,
+    indexedMimeType: String?,
+    extracted: VideoMetadata
+): VideoMetadata = VideoMetadata(
+    durationMs = indexedDurationMs.takeIf { it > 0L } ?: extracted.durationMs ?: indexedDurationMs,
+    width = indexedWidth ?: extracted.width,
+    height = indexedHeight ?: extracted.height,
+    rotationDegrees = indexedRotationDegrees ?: extracted.rotationDegrees,
+    bitrateBitsPerSecond = indexedBitrateBitsPerSecond ?: extracted.bitrateBitsPerSecond,
+    mimeType = indexedMimeType ?: extracted.mimeType
 )
+
+internal fun VideoItem.withMetadata(metadata: VideoMetadata): VideoItem {
+    val merged = mergeVideoMetadata(
+        indexedDurationMs = durationMs,
+        indexedWidth = width,
+        indexedHeight = height,
+        indexedRotationDegrees = rotationDegrees,
+        indexedBitrateBitsPerSecond = bitrateBitsPerSecond,
+        indexedMimeType = mimeType,
+        extracted = metadata
+    )
+    return copy(
+        durationMs = merged.durationMs ?: durationMs,
+        width = merged.width,
+        height = merged.height,
+        rotationDegrees = merged.rotationDegrees,
+        bitrateBitsPerSecond = merged.bitrateBitsPerSecond,
+        mimeType = merged.mimeType
+    )
+}

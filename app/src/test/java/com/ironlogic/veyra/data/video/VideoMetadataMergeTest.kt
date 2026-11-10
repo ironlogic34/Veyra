@@ -1,31 +1,19 @@
 package com.ironlogic.veyra.data.video
 
-import android.net.Uri
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class VideoMetadataMergeTest {
-    private fun video(
-        durationMs: Long = 0L,
-        mimeType: String? = null,
-        width: Int? = null,
-        height: Int? = null
-    ) = VideoItem(
-        contentUri = Uri.parse("content://videos/1"),
-        displayName = "clip.mp4",
-        durationMs = durationMs,
-        sizeBytes = 1024L,
-        dateModifiedSeconds = 10L,
-        mimeType = mimeType,
-        relativePath = null,
-        width = width,
-        height = height
-    )
-
     @Test
     fun fillsMissingFieldsFromExtractedMetadata() {
-        val result = video().withMetadata(
-            VideoMetadata(
+        val result = mergeVideoMetadata(
+            indexedDurationMs = 0L,
+            indexedWidth = null,
+            indexedHeight = null,
+            indexedRotationDegrees = null,
+            indexedBitrateBitsPerSecond = null,
+            indexedMimeType = null,
+            extracted = VideoMetadata(
                 durationMs = 120000L,
                 width = 1920,
                 height = 1080,
@@ -45,13 +33,14 @@ class VideoMetadataMergeTest {
 
     @Test
     fun preservesExistingIndexedValues() {
-        val result = video(
-            durationMs = 60000L,
-            mimeType = "video/webm",
-            width = 1280,
-            height = 720
-        ).withMetadata(
-            VideoMetadata(
+        val result = mergeVideoMetadata(
+            indexedDurationMs = 60000L,
+            indexedWidth = 1280,
+            indexedHeight = 720,
+            indexedRotationDegrees = null,
+            indexedBitrateBitsPerSecond = null,
+            indexedMimeType = "video/webm",
+            extracted = VideoMetadata(
                 durationMs = 120000L,
                 width = 1920,
                 height = 1080,
