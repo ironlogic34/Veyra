@@ -45,6 +45,10 @@ class VideoPlaybackService : Service() {
             updatePlaybackNotification()
         }
 
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            updatePlaybackNotification()
+        }
+
         override fun onPlaybackStateChanged(playbackState: Int) {
             updatePlaybackNotification()
         }
@@ -105,7 +109,10 @@ class VideoPlaybackService : Service() {
 
         val player = playbackSession.engine.player
         val notification = buildPlaybackNotification()
-        if (player.isPlaying) {
+        val shouldRunForeground = player.playWhenReady &&
+            player.playbackState != Player.STATE_IDLE &&
+            player.playbackState != Player.STATE_ENDED
+        if (shouldRunForeground) {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     startForeground(
@@ -138,6 +145,7 @@ class VideoPlaybackService : Service() {
             ?: player.currentMediaItem?.mediaMetadata?.title?.toString()
             ?: "Veyra video playback"
         val isPlaying = player.isPlaying
+        val isPlaybackRequested = player.playWhenReady
         val contentIntent = PendingIntent.getActivity(
             this,
             REQUEST_OPEN_APP,
@@ -150,10 +158,10 @@ class VideoPlaybackService : Service() {
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(title)
-            .setContentText(if (isPlaying) "Playing video" else "Playback paused")
+            .setContentText(if (isPlaybackRequested) "Playing video" else "Playback paused")
             .setContentIntent(contentIntent)
             .setVisibility(Notification.VISIBILITY_PUBLIC)
-            .setOngoing(isPlaying)
+            .setOngoing(isPlaybackRequested)
             .setOnlyAlertOnce(true)
             .addAction(action(android.R.drawable.ic_media_previous, "Previous", ACTION_PREVIOUS))
             .addAction(
