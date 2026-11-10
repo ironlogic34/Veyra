@@ -33,7 +33,7 @@ Results are deduplicated by exact content URI, then sorted newest-first with a c
 - Newest/oldest, name A–Z/Z–A, duration shortest/longest, and file size smallest/largest sorting.
 - Deterministic tie-breaks and no mutation of the source list.
 
-`VideoLibraryControls` provides reusable search and sort inputs. The screen owns the query and sort state, so phone and tablet layouts can position the controls independently while feeding the same query layer.
+`VideoLibraryControls` provides reusable search, sort, and optional MIME filter controls. The screen owns the query, sort, and selected MIME-type state. A null MIME selection means all formats; a non-null set is an exact allow-list, including an empty set that intentionally matches no items. Filter labels and MIME groups are supplied by the caller rather than assuming a fixed format list.
 
 Phone and tablet interfaces consume the shared logic through their own separate UI implementations.
 
@@ -69,7 +69,7 @@ Phone and tablet interfaces consume the shared logic through their own separate 
 
 The playback host must create and retain the session outside recomposition, attach the lifecycle bridge, and release the session when playback is actually finished. Notification, lock-screen, and Bluetooth controls remain separate work.
 
-`VideoLibraryCard` loads and displays a cached thumbnail for one video. `VideoLibraryList` composes those cards in a keyed lazy list and exposes click handling, content padding, spacing, and empty-state text without imposing a screen design. `VideoLibraryControls` provides search and sort inputs without owning screen state. `VideoPlaybackContent` combines the Media3 surface with transport controls and observes player state; it does not create or own the session. The phone and tablet screens can embed these shared pieces in their own distinct layouts.
+`VideoLibraryCard` loads and displays a cached thumbnail for one video. `VideoLibraryList` composes those cards in a keyed lazy list and exposes click handling, content padding, spacing, and empty-state text without imposing a screen design. `VideoLibraryControls` provides search, sort, and optional MIME filters without owning screen state. `VideoPlaybackContent` combines the Media3 surface with transport controls and observes player state; it does not create or own the session. The phone and tablet screens can embed these shared pieces in their own distinct layouts.
 
 ## Playback history storage
 
@@ -90,7 +90,9 @@ The current activity remains a functional access test surface, not the final lib
 ## Not implemented yet
 
 - Integration of the reusable thumbnail card/list and controls into the final library screens.
-- MIME filter controls and folder navigation.
+- Folder navigation and management UI.
 - Actual playback host wiring and notification/background playback controls.
 - Notification, lock-screen, and Bluetooth controls.
-- Final phone and tablet video screens based on the user's design specifications.
+- Remaining playback settings and subtitle/orientation controls.
+- Final phone and tablet video screens based on the user's exact design specifications.
+- GitHub release signing, APK publishing, and in-app update flow.

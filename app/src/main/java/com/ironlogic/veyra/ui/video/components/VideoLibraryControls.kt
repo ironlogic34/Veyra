@@ -1,12 +1,15 @@
 package com.ironlogic.veyra.ui.video.components
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -21,10 +24,19 @@ import androidx.compose.ui.unit.dp
 import com.ironlogic.veyra.data.video.VideoSortOrder
 
 /**
- * Reusable search and sort controls for a video collection.
+ * A caller-defined MIME filter group. For example, a screen may group
+ * video/mp4 and video/x-matroska under one human-readable option.
+ */
+data class VideoMimeTypeOption(
+    val label: String,
+    val mimeTypes: Set<String>
+)
+
+/**
+ * Reusable search, sort, and optional MIME filter controls.
  *
- * State stays with the screen so phone and tablet layouts can place these
- * controls independently and share the same query state.
+ * The screen owns all query state. A null selectedMimeTypes value means
+ * that all MIME types are included; an empty set intentionally matches none.
  */
 @Composable
 fun VideoLibraryControls(
@@ -32,7 +44,10 @@ fun VideoLibraryControls(
     sortOrder: VideoSortOrder,
     onSearchQueryChange: (String) -> Unit,
     onSortOrderChange: (VideoSortOrder) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    mimeTypeOptions: List<VideoMimeTypeOption> = emptyList(),
+    selectedMimeTypes: Set<String>? = null,
+    onSelectedMimeTypesChange: (Set<String>?) -> Unit = {}
 ) {
     var sortMenuExpanded by remember { mutableStateOf(false) }
 
@@ -47,6 +62,44 @@ fun VideoLibraryControls(
             label = { Text("Search videos") },
             singleLine = true
         )
+
+        if (mimeTypeOptions.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = selectedMimeTypes == null,
+                    onClick = { onSelectedMimeTypesChange(null) },
+                    label = { Text("All") }
+                )
+
+                mimeTypeOptions.forEach { option ->
+                    val isSelected = selectedMimeTypes != null &&
+                        option.mimeTypes.isNotEmpty() &&
+                        selectedMimeTypes.containsAll(option.mimeTypes)
+
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = {
+                            if (option.mimeTypes.isNotEmpty()) {
+                                val current = selectedMimeTypes.orEmpty()
+                                val updated = if (isSelected) {
+                                    current - option.mimeTypes
+                                } else {
+                                    current + option.mimeTypes
+                                }
+                                onSelectedMimeTypesChange(updated)
+                            }
+                        },
+                        enabled = option.mimeTypes.isNotEmpty(),
+                        label = { Text(option.label) }
+                    )
+                }
+            }
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
