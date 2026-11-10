@@ -67,6 +67,8 @@ Phone and tablet interfaces consume the shared logic through their own separate 
 
 The playback host must create and retain the session outside recomposition, attach the lifecycle bridge, and release the session when playback is actually finished. Notification, lock-screen, and Bluetooth controls remain separate work.
 
+`VideoLibraryCard` loads and displays a cached thumbnail for one video while leaving list/grid sizing and click navigation to the parent. `VideoPlaybackContent` combines the Media3 surface with transport controls and observes player state; it does not create or own the session. The phone and tablet screens can embed these shared pieces in their own distinct layouts.
+
 ## Playback history storage
 
 `VideoPlaybackHistoryStore` persists records in `veyra_video_history.db`. It supports save/update, lookup by exact content URI, recent-history queries, individual deletion, and clearing history. Database operations run on the IO dispatcher. Schema changes require explicit migrations; unsupported upgrades refuse to delete history.
