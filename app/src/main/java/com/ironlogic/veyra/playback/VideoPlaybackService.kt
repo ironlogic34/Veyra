@@ -10,6 +10,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import com.ironlogic.veyra.MainActivity
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +25,7 @@ import kotlinx.coroutines.launch
  * headsets, and Bluetooth devices. The service notification is updated from
  * the same ExoPlayer instance used by the in-app UI.
  */
+@OptIn(UnstableApi::class)
 class VideoPlaybackService : Service() {
 
     inner class LocalBinder : Binder() {
@@ -65,8 +67,17 @@ class VideoPlaybackService : Service() {
         super.onCreate()
         createNotificationChannel()
         playbackSession = VideoPlaybackSession(applicationContext)
+        val sessionActivity = PendingIntent.getActivity(
+            this,
+            REQUEST_OPEN_APP,
+            Intent(this, MainActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            ),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
         mediaSession = MediaSession.Builder(this, playbackSession.engine.player)
             .setId("veyra-video-playback")
+            .setSessionActivity(sessionActivity)
             .build()
         playbackSession.engine.player.addListener(playerListener)
     }
