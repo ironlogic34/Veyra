@@ -24,7 +24,7 @@ Audio/music and device streaming/casting are explicitly deferred to Veyra 2.0.
 
 ## Development status
 
-The repository contains the Android foundation, shared UI tokens, initial interaction primitives, and the first MediaStore video-library data source.
+The repository now includes a local video library with permission-aware MediaStore/SAF access, search and sorting, Media3 playback with saved progress and system controls, related-video recommendations, and persistent playback preferences. Final phone and tablet playback layouts remain separate design work and must follow the user's supplied specifications.
 
 - [V1 scope](docs/v1-scope.md)
 - [Architecture overview](docs/architecture/overview.md)

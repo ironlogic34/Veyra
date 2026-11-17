@@ -39,6 +39,8 @@ import com.ironlogic.veyra.data.video.VideoCompletionMode
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
 import com.ironlogic.veyra.data.video.VideoRelatedItems
+import com.ironlogic.veyra.data.video.VideoPlaybackSettings
+import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoLibraryQuery
 import com.ironlogic.veyra.data.video.VideoSortOrder
 import com.ironlogic.veyra.permissions.VideoAccessLevel
@@ -49,6 +51,7 @@ import com.ironlogic.veyra.playback.VideoPlaybackSessionLifecycle
 import com.ironlogic.veyra.ui.theme.VeyraTheme
 import com.ironlogic.veyra.ui.video.components.VideoLibraryControls
 import com.ironlogic.veyra.ui.video.components.VideoPlaybackContent
+import com.ironlogic.veyra.ui.video.components.VideoPlaybackSettingsContent
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -117,6 +120,13 @@ class MainActivity : ComponentActivity() {
                 var isLoading by remember { mutableStateOf(false) }
                 var searchQuery by remember { mutableStateOf("") }
                 var sortOrder by remember { mutableStateOf(VideoSortOrder.NEWEST_FIRST) }
+                var showPlaybackSettings by remember { mutableStateOf(false) }
+                val playbackSettingsStore = remember {
+                    VideoPlaybackSettingsStore(applicationContext)
+                }
+                var playbackSettings by remember {
+                    mutableStateOf(playbackSettingsStore.load())
+                }
                 val scope = rememberCoroutineScope()
                 val playbackSession = playbackSessionState.value
                 val visibleVideos = remember(videos, searchQuery, sortOrder) {
@@ -154,8 +164,8 @@ class MainActivity : ComponentActivity() {
                             session.openQueue(
                                 mediaUris = queue,
                                 startIndex = index,
-                                resume = true,
-                                completionMode = VideoCompletionMode.PLAY_NEXT,
+                                resume = playbackSettings.resumePlayback,
+                                completionMode = playbackSettings.completionMode,
                                 displayNames = names
                             )
                             activeVideo = video
@@ -166,7 +176,15 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                BackHandler(enabled = activeVideo != null) { leavePlayback() }
+                fun updatePlaybackSettings(updated: VideoPlaybackSettings) {
+                    playbackSettings = updated
+                    playbackSettingsStore.save(updated)
+                    playbackSession?.setCompletionMode(updated.completionMode)
+                }
+
+                BackHandler(enabled = activeVideo != null || showPlaybackSettings) {
+                    if (activeVideo != null) leavePlayback() else showPlaybackSettings = false
+                }
 
                 val permissionLauncher = rememberLauncherForActivityResult(
                     ActivityResultContracts.RequestMultiplePermissions()
@@ -302,6 +320,29 @@ class MainActivity : ComponentActivity() {
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
+                    } else if (showPlaybackSettings) {
+                        Column(
+                            modifier = Modifier.fillMaxSize().padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    "Playback settings",
+                                    style = MaterialTheme.typography.headlineSmall
+                                )
+                                OutlinedButton(onClick = { showPlaybackSettings = false }) {
+                                    Text("Back")
+                                }
+                            }
+                            VideoPlaybackSettingsContent(
+                                settings = playbackSettings,
+                                onSettingsChange = ::updatePlaybackSettings,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     } else {
                         Column(
                             modifier = Modifier.fillMaxSize().padding(20.dp),
@@ -354,6 +395,9 @@ class MainActivity : ComponentActivity() {
                                     folderUris = readPersistedFolderUris()
                                     refreshLibrary()
                                 }) { Text("Refresh") }
+                                OutlinedButton(onClick = { showPlaybackSettings = true }) {
+                                    Text("Playback settings")
+                                }
                                 if (isLoading) Text("Scanning…")
                             }
                             Text(status, style = MaterialTheme.typography.bodySmall)
