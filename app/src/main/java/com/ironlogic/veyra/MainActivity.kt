@@ -36,12 +36,15 @@ import androidx.compose.ui.unit.dp
 import com.ironlogic.veyra.data.video.VideoCompletionMode
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
+import com.ironlogic.veyra.data.video.VideoLibraryQuery
+import com.ironlogic.veyra.data.video.VideoSortOrder
 import com.ironlogic.veyra.permissions.VideoAccessLevel
 import com.ironlogic.veyra.permissions.VideoAccessPermission
 import com.ironlogic.veyra.playback.VideoPlaybackService
 import com.ironlogic.veyra.playback.VideoPlaybackSession
 import com.ironlogic.veyra.playback.VideoPlaybackSessionLifecycle
 import com.ironlogic.veyra.ui.theme.VeyraTheme
+import com.ironlogic.veyra.ui.video.components.VideoLibraryControls
 import com.ironlogic.veyra.ui.video.components.VideoPlaybackContent
 import kotlinx.coroutines.launch
 
@@ -109,8 +112,23 @@ class MainActivity : ComponentActivity() {
                 var activeVideo by remember { mutableStateOf<VideoItem?>(null) }
                 var status by remember { mutableStateOf("Choose how Veyra can access your videos.") }
                 var isLoading by remember { mutableStateOf(false) }
+                var searchQuery by remember { mutableStateOf("") }
+                var sortOrder by remember { mutableStateOf(VideoSortOrder.NEWEST_FIRST) }
                 val scope = rememberCoroutineScope()
                 val playbackSession = playbackSessionState.value
+                val visibleVideos = remember(videos, searchQuery, sortOrder) {
+                    VideoLibraryQuery.apply(
+                        items = videos,
+                        searchQuery = searchQuery,
+                        sortOrder = sortOrder,
+                        displayName = VideoItem::displayName,
+                        relativePath = VideoItem::relativePath,
+                        durationMs = VideoItem::durationMs,
+                        sizeBytes = VideoItem::sizeBytes,
+                        modifiedSeconds = VideoItem::dateModifiedSeconds,
+                        mimeType = VideoItem::mimeType
+                    )
+                }
 
                 fun leavePlayback() {
                     playbackSession?.engine?.pause()
@@ -271,12 +289,35 @@ class MainActivity : ComponentActivity() {
                             if (playbackSession == null) {
                                 Text("Starting playback service…", style = MaterialTheme.typography.bodySmall)
                             }
-                            Text("Videos (${videos.size}) · Tap to play", style = MaterialTheme.typography.titleMedium)
-                            LazyColumn(
-                                modifier = Modifier.fillMaxWidth().weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                items(videos, key = { it.contentUri.toString() }) { video ->
+                            Text(
+                                "Videos (${visibleVideos.size} of ${videos.size}) · Tap to play",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            if (videos.isNotEmpty()) {
+                                VideoLibraryControls(
+                                    searchQuery = searchQuery,
+                                    sortOrder = sortOrder,
+                                    onSearchQueryChange = { searchQuery = it },
+                                    onSortOrderChange = { sortOrder = it },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            if (visibleVideos.isEmpty()) {
+                                Text(
+                                    if (videos.isEmpty()) {
+                                        "No videos found in the accessible locations."
+                                    } else {
+                                        "No videos match your search."
+                                    },
+                                    modifier = Modifier.fillMaxWidth().weight(1f),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxWidth().weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(visibleVideos, key = { it.contentUri.toString() }) { video ->
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
