@@ -38,6 +38,8 @@ import androidx.media3.common.Player
 import com.ironlogic.veyra.data.video.VideoCompletionMode
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
+import com.ironlogic.veyra.data.video.VideoLibrarySettings
+import com.ironlogic.veyra.data.video.VideoLibrarySettingsStore
 import com.ironlogic.veyra.data.video.VideoRelatedItems
 import com.ironlogic.veyra.data.video.VideoPlaybackSettings
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
@@ -119,7 +121,12 @@ class MainActivity : ComponentActivity() {
                 var status by remember { mutableStateOf("Choose how Veyra can access your videos.") }
                 var isLoading by remember { mutableStateOf(false) }
                 var searchQuery by remember { mutableStateOf("") }
-                var sortOrder by remember { mutableStateOf(VideoSortOrder.NEWEST_FIRST) }
+                val librarySettingsStore = remember {
+                    VideoLibrarySettingsStore(applicationContext)
+                }
+                var sortOrder by remember {
+                    mutableStateOf(librarySettingsStore.load().sortOrder)
+                }
                 var showPlaybackSettings by remember { mutableStateOf(false) }
                 val playbackSettingsStore = remember {
                     VideoPlaybackSettingsStore(applicationContext)
@@ -413,7 +420,10 @@ class MainActivity : ComponentActivity() {
                                     searchQuery = searchQuery,
                                     sortOrder = sortOrder,
                                     onSearchQueryChange = { searchQuery = it },
-                                    onSortOrderChange = { sortOrder = it },
+                                    onSortOrderChange = {
+                                        sortOrder = it
+                                        librarySettingsStore.save(VideoLibrarySettings(sortOrder = it))
+                                    },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }

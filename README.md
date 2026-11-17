@@ -31,4 +31,4 @@ The repository now includes a local video library with permission-aware MediaSto
 - [Design-system foundation](docs/design-system.md)
 - [Video library foundation](docs/video-library-foundation.md)
 
-Playback, final screens, and settings are not yet implemented.
+Remaining V1 work includes the final phone and tablet playback layouts, the rest of the video-tab settings, and full target-device validation.
