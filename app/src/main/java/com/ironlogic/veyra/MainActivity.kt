@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -33,9 +34,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.media3.common.Player
 import com.ironlogic.veyra.data.video.VideoCompletionMode
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
+import com.ironlogic.veyra.data.video.VideoRelatedItems
 import com.ironlogic.veyra.data.video.VideoLibraryQuery
 import com.ironlogic.veyra.data.video.VideoSortOrder
 import com.ironlogic.veyra.permissions.VideoAccessLevel
@@ -135,6 +138,34 @@ class MainActivity : ComponentActivity() {
                     activeVideo = null
                 }
 
+                fun playVideo(video: VideoItem) {
+                    val session = playbackSession
+                    if (session == null) {
+                        status = "Playback service is still starting. Try again in a moment."
+                        return
+                    }
+                    scope.launch {
+                        try {
+                            val queue = videos.map { it.contentUri }
+                            val names = videos.map { it.displayName }
+                            val index = videos.indexOfFirst {
+                                it.contentUri == video.contentUri
+                            }.coerceAtLeast(0)
+                            session.openQueue(
+                                mediaUris = queue,
+                                startIndex = index,
+                                resume = true,
+                                completionMode = VideoCompletionMode.PLAY_NEXT,
+                                displayNames = names
+                            )
+                            activeVideo = video
+                            status = "Playing ${video.displayName}"
+                        } catch (_: Exception) {
+                            status = "This video could not be opened. Its access may have changed."
+                        }
+                    }
+                }
+
                 BackHandler(enabled = activeVideo != null) { leavePlayback() }
 
                 val permissionLauncher = rememberLauncherForActivityResult(
@@ -197,11 +228,49 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                DisposableEffect(videos, playbackSession) {
+                    val session = playbackSession
+                    if (session == null) {
+                        onDispose { }
+                    } else {
+                        val listener = object : Player.Listener {
+                            override fun onMediaItemTransition(
+                                mediaItem: androidx.media3.common.MediaItem?,
+                                reason: Int
+                            ) {
+                                val currentUri = session.engine.currentMediaUri()
+                                if (currentUri != null) {
+                                    activeVideo = videos.firstOrNull {
+                                        it.contentUri == currentUri
+                                    }
+                                }
+                            }
+                        }
+                        session.engine.addListener(listener)
+                        onDispose { session.engine.removeListener(listener) }
+                    }
+                }
+
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val selectedVideo = activeVideo
+                    val relatedVideos = remember(videos, selectedVideo) {
+                        selectedVideo?.let { current ->
+                            VideoRelatedItems.select(
+                                currentMediaUri = current.contentUri.toString(),
+                                currentRelativePath = current.relativePath,
+                                currentMimeType = current.mimeType,
+                                candidates = videos,
+                                mediaUri = { it.contentUri.toString() },
+                                relativePath = { it.relativePath },
+                                mimeType = { it.mimeType },
+                                modifiedSeconds = { it.dateModifiedSeconds },
+                                displayName = { it.displayName }
+                            )
+                        } ?: emptyList()
+                    }
                     if (selectedVideo != null) {
                         Column(
                             modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -221,6 +290,8 @@ class MainActivity : ComponentActivity() {
                             if (playbackSession != null) {
                                 VideoPlaybackContent(
                                     session = playbackSession,
+                                    relatedVideos = relatedVideos,
+                                    onRelatedVideoClick = ::playVideo,
                                     modifier = Modifier.fillMaxWidth().weight(1f)
                                 )
                             } else {
@@ -321,33 +392,7 @@ class MainActivity : ComponentActivity() {
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable {
-                                                val session = playbackSession
-                                                if (session == null) {
-                                                    status = "Playback service is still starting. Try again in a moment."
-                                                } else {
-                                                    scope.launch {
-                                                        try {
-                                                            val queue = videos.map { it.contentUri }
-                                                            val names = videos.map { it.displayName }
-                                                            val index = videos.indexOfFirst {
-                                                                it.contentUri == video.contentUri
-                                                            }.coerceAtLeast(0)
-                                                            session.openQueue(
-                                                                mediaUris = queue,
-                                                                startIndex = index,
-                                                                resume = true,
-                                                                completionMode = VideoCompletionMode.PLAY_NEXT,
-                                                                displayNames = names
-                                                            )
-                                                            activeVideo = video
-                                                            status = "Playing ${video.displayName}"
-                                                        } catch (_: Exception) {
-                                                            status = "This video could not be opened. Its access may have changed."
-                                                        }
-                                                    }
-                                                }
-                                            }
+                                            .clickable { playVideo(video) }
                                             .padding(vertical = 8.dp)
                                     ) {
                                         Text(video.displayName, style = MaterialTheme.typography.bodyLarge)
