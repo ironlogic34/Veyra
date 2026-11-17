@@ -365,6 +365,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    }
+
     private fun readPersistedFolderUris(): List<Uri> =
         contentResolver.persistedUriPermissions
             .filter { it.isReadPermission }
