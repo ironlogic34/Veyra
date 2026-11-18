@@ -16,6 +16,15 @@ import kotlinx.coroutines.sync.withPermit
 class VideoMetadataRepository(context: Context) {
     private val dataSource = VideoMetadataDataSource(context)
 
+    private val singleItemSemaphore = Semaphore(DEFAULT_MAX_CONCURRENT_LOADS)
+
+    suspend fun enrichOne(video: VideoItem): VideoItem {
+        if (!video.needsMetadata()) return video
+        return singleItemSemaphore.withPermit {
+            dataSource.load(video.contentUri)?.let(video::withMetadata) ?: video
+        }
+    }
+
     suspend fun enrich(
         videos: List<VideoItem>,
         maxConcurrentLoads: Int = DEFAULT_MAX_CONCURRENT_LOADS

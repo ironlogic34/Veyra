@@ -35,6 +35,7 @@ import androidx.media3.common.Player
 import com.ironlogic.veyra.data.video.VideoCompletionMode
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoThumbnailDataSource
+import com.ironlogic.veyra.data.video.VideoMetadataRepository
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
 import com.ironlogic.veyra.data.video.VideoLibrarySettings
 import com.ironlogic.veyra.data.video.VideoLibrarySettingsStore
@@ -136,6 +137,7 @@ class MainActivity : ComponentActivity() {
                 val scope = rememberCoroutineScope()
                 val playbackSession = playbackSessionState.value
                 val thumbnailDataSource = remember { VideoThumbnailDataSource(applicationContext) }
+                val metadataRepository = remember { VideoMetadataRepository(applicationContext) }
                 val visibleVideos = remember(videos, searchQuery, sortOrder) {
                     VideoLibraryQuery.apply(
                         items = videos,
@@ -441,6 +443,7 @@ class MainActivity : ComponentActivity() {
                                 VideoLibraryList(
                                     videos = visibleVideos,
                                     thumbnailDataSource = thumbnailDataSource,
+                                    metadataRepository = metadataRepository,
                                     onVideoClick = ::playVideo,
                                     modifier = Modifier.fillMaxWidth().weight(1f),
                                     verticalItemSpacing = 8

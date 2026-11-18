@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ironlogic.veyra.data.video.VideoItem
+import com.ironlogic.veyra.data.video.VideoMetadataRepository
 import com.ironlogic.veyra.data.video.VideoThumbnailDataSource
 
 /**
@@ -23,6 +24,7 @@ import com.ironlogic.veyra.data.video.VideoThumbnailDataSource
 fun VideoLibraryList(
     videos: List<VideoItem>,
     thumbnailDataSource: VideoThumbnailDataSource,
+    metadataRepository: VideoMetadataRepository,
     onVideoClick: (VideoItem) -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(16.dp),
@@ -50,6 +52,7 @@ fun VideoLibraryList(
             VideoLibraryCard(
                 video = video,
                 thumbnailDataSource = thumbnailDataSource,
+                metadataRepository = metadataRepository,
                 onClick = onVideoClick,
                 modifier = Modifier.fillMaxWidth()
             )

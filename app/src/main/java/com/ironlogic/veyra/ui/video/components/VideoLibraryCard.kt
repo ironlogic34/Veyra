@@ -21,6 +21,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.ironlogic.veyra.data.video.VideoDisplayFormatters
 import com.ironlogic.veyra.data.video.VideoItem
+import com.ironlogic.veyra.data.video.VideoMetadataRepository
 import com.ironlogic.veyra.data.video.VideoThumbnailDataSource
 
 /**
@@ -31,13 +32,21 @@ import com.ironlogic.veyra.data.video.VideoThumbnailDataSource
 fun VideoLibraryCard(
     video: VideoItem,
     thumbnailDataSource: VideoThumbnailDataSource,
+    metadataRepository: VideoMetadataRepository,
     onClick: (VideoItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var thumbnail by remember(video.contentUri) { mutableStateOf<android.graphics.Bitmap?>(null) }
 
+    var enrichedVideo by remember(video.contentUri) { mutableStateOf(video) }
+
     LaunchedEffect(video.contentUri, thumbnailDataSource) {
         thumbnail = thumbnailDataSource.load(video.contentUri)
+    }
+
+    LaunchedEffect(video, metadataRepository) {
+        enrichedVideo = video
+        enrichedVideo = metadataRepository.enrichOne(video)
     }
 
     Card(
@@ -63,11 +72,18 @@ fun VideoLibraryCard(
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2
             )
+            val resolution = VideoDisplayFormatters.formatResolution(
+                enrichedVideo.width,
+                enrichedVideo.height,
+                enrichedVideo.rotationDegrees
+            )
             Text(
-                text = listOf(
-                    VideoDisplayFormatters.formatDuration(video.durationMs),
-                    video.relativePath ?: "Device library"
-                ).joinToString(" · "),
+                text = buildList {
+                    add(VideoDisplayFormatters.formatDuration(enrichedVideo.durationMs))
+                    if (resolution != "Unknown") add(resolution)
+                    add(VideoDisplayFormatters.formatFileSize(enrichedVideo.sizeBytes))
+                    add(enrichedVideo.relativePath ?: "Device library")
+                }.joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 2
             )
