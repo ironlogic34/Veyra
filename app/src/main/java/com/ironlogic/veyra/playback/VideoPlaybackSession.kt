@@ -46,6 +46,12 @@ class VideoPlaybackSession(
             completionHandled = false
         }
 
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            if (!playWhenReady && reason == Player.PLAY_WHEN_READY_CHANGE_REASON_END_OF_MEDIA_ITEM) {
+                handleCompletion()
+            }
+        }
+
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_ENDED) handleCompletion()
         }
@@ -157,28 +163,33 @@ class VideoPlaybackSession(
 
     private fun handleCompletion() {
         if (released || completionHandled) return
-        completionHandled = true
         val index = engine.currentMediaItemIndex()
-        val currentUri = queue.getOrNull(index)?.toString() ?: return
+        val completionQueue = queue.toList()
+        val currentUri = completionQueue.getOrNull(index)?.toString() ?: return
+        val mode = completionMode
+        val durationMs = engine.snapshot().durationMs
+        completionHandled = true
+
         scope.launch {
-            val snapshot = engine.snapshot()
             history.save(
-                VideoResumePolicy.completed(currentUri, snapshot.durationMs, nowEpochMs())
+                VideoResumePolicy.completed(currentUri, durationMs, nowEpochMs())
             )
             when (val action = VideoCompletionPolicy.decide(
-                completionMode,
-                queue.map(Uri::toString),
+                mode,
+                completionQueue.map(Uri::toString),
                 index
             )) {
                 VideoCompletionAction.Stop -> engine.pause()
                 is VideoCompletionAction.Replay -> {
                     engine.seekTo(0L)
+                    completionHandled = false
                     engine.play()
                 }
                 is VideoCompletionAction.PlayNext -> {
-                    val expectedNext = queue.getOrNull(index + 1)?.toString()
+                    val expectedNext = completionQueue.getOrNull(index + 1)?.toString()
                     if (expectedNext == action.mediaUri) {
                         engine.seekToNextMediaItem()
+                        engine.play()
                     } else {
                         engine.pause()
                     }

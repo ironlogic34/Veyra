@@ -19,6 +19,14 @@ class VideoCompletionPolicyTest {
     }
 
     @Test
+    fun stopModeStopsAtAnIntermediateItem() {
+        assertEquals(
+            VideoCompletionAction.Stop,
+            VideoCompletionPolicy.decide(VideoCompletionMode.STOP, queue, 1)
+        )
+    }
+
+    @Test
     fun repeatModeReplaysCurrentItem() {
         assertEquals(
             VideoCompletionAction.Replay(queue[1]),
@@ -31,6 +39,14 @@ class VideoCompletionPolicyTest {
         assertEquals(
             VideoCompletionAction.PlayNext(queue[1]),
             VideoCompletionPolicy.decide(VideoCompletionMode.PLAY_NEXT, queue, 0)
+        )
+    }
+
+    @Test
+    fun repeatModeReplaysTheLastItemInsteadOfStopping() {
+        assertEquals(
+            VideoCompletionAction.Replay(queue[2]),
+            VideoCompletionPolicy.decide(VideoCompletionMode.REPEAT, queue, 2)
         )
     }
 

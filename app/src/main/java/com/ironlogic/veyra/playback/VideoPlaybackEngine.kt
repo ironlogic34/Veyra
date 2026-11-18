@@ -7,6 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 
 /**
@@ -15,11 +16,14 @@ import androidx.media3.exoplayer.ExoPlayer
  * Create and control this class on the main thread. The owner is responsible
  * for calling [close] when the playback session is finished.
  */
+@OptIn(UnstableApi::class)
 @MainThread
 class VideoPlaybackEngine(context: Context) : AutoCloseable {
     private val exoPlayer = ExoPlayer.Builder(context.applicationContext).build().apply {
         setAudioAttributes(androidx.media3.common.AudioAttributes.DEFAULT, true)
         setWakeMode(C.WAKE_MODE_LOCAL)
+        // Keep queue advancement under VideoPlaybackSession's completion policy.
+        setPauseAtEndOfMediaItems(true)
     }
 
     val player: Player
