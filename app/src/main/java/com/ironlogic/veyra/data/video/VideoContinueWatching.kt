@@ -12,7 +12,7 @@ internal data class VideoContinueWatchingEntry<T>(
  * newest-first result without sorting or relying on filenames.
  */
 internal object VideoContinueWatching {
-    fun <T> select(
+    fun <T : Any> select(
         records: List<VideoPlaybackRecord>,
         candidates: List<T>,
         limit: Int = DEFAULT_LIMIT,

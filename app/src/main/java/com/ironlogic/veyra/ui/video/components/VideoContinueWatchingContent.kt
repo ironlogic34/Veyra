@@ -18,7 +18,7 @@ import com.ironlogic.veyra.data.video.VideoItem
 
 /** A caller-placed row of recent, incomplete local videos. */
 @Composable
-fun VideoContinueWatchingContent(
+internal fun VideoContinueWatchingContent(
     items: List<VideoContinueWatchingEntry<VideoItem>>,
     onVideoClick: (VideoItem) -> Unit,
     modifier: Modifier = Modifier
