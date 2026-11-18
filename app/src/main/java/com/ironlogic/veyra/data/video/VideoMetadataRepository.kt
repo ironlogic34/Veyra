@@ -15,14 +15,13 @@ import kotlinx.coroutines.sync.withPermit
  */
 class VideoMetadataRepository(context: Context) {
     private val dataSource = VideoMetadataDataSource(context)
+    private val metadataCache = VideoMetadataCache()
 
     private val singleItemSemaphore = Semaphore(DEFAULT_MAX_CONCURRENT_LOADS)
 
     suspend fun enrichOne(video: VideoItem): VideoItem {
         if (!video.needsMetadata()) return video
-        return singleItemSemaphore.withPermit {
-            dataSource.load(video.contentUri)?.let(video::withMetadata) ?: video
-        }
+        return loadMetadata(video, singleItemSemaphore)?.let(video::withMetadata) ?: video
     }
 
     suspend fun enrich(
@@ -38,12 +37,32 @@ class VideoMetadataRepository(context: Context) {
                     if (!video.needsMetadata()) {
                         video
                     } else {
-                        semaphore.withPermit {
-                            dataSource.load(video.contentUri)?.let(video::withMetadata) ?: video
-                        }
+                        loadMetadata(video, semaphore)?.let(video::withMetadata) ?: video
                     }
                 }
             }.awaitAll()
+        }
+    }
+
+    /** Drops both successful and failed extraction results when the library is refreshed. */
+    fun clearCache() {
+        metadataCache.clear()
+    }
+
+    private suspend fun loadMetadata(
+        video: VideoItem,
+        semaphore: Semaphore
+    ): VideoMetadata? {
+        val key = VideoMetadataCacheKey(
+            contentUri = video.contentUri.toString(),
+            dateModifiedSeconds = video.dateModifiedSeconds,
+            sizeBytes = video.sizeBytes
+        )
+        metadataCache.get(key)?.let { return it.metadata }
+
+        return semaphore.withPermit {
+            metadataCache.get(key)?.let { return@withPermit it.metadata }
+            dataSource.load(video.contentUri).also { metadataCache.put(key, it) }
         }
     }
 

@@ -255,6 +255,7 @@ class MainActivity : ComponentActivity() {
 
                 fun refreshLibrary() {
                     scope.launch {
+                        metadataRepository.clearCache()
                         isLoading = true
                         try {
                             val result = VideoLibraryRepository(contentResolver).load(
