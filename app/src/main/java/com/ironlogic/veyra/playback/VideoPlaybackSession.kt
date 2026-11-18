@@ -109,6 +109,12 @@ class VideoPlaybackSession(
         currentRecord()?.let { history.save(it) }
     }
 
+    suspend fun recentHistory(limit: Int = 50): List<VideoPlaybackRecord> {
+        checkActive()
+        pendingProgressSave?.join()
+        return history.recent(limit)
+    }
+
     /** Saves the final position before releasing both player and database. */
     suspend fun release() {
         if (released) return

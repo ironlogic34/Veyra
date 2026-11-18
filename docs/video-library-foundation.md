@@ -33,6 +33,8 @@ The started and bound `VideoPlaybackService` owns one session independently of t
 
 The functional host opens a tapped library item as the start of a queue, resumes its saved position, displays `VideoPlaybackContent`, and returns to the library with playback paused. Leaving the Activity in the background does not pause the player. The playback content remains a neutral building block; final phone and tablet arrangements remain independent design work.
 
+The library exposes a Continue Watching row from recent, incomplete playback records. It resolves records against the currently indexed content URIs, ignores completed or non-resumable positions, and opens a selected item at its saved position.
+
 ## Player surface and controls
 
 `VideoPlayerSurface` attaches the session-owned player to Media3 PlayerView and detaches the view without releasing the player. `VideoPlaybackContent` observes player state and connects the surface to reusable play/pause and seek controls. Screen owners retain control over placement and styling.

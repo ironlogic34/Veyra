@@ -40,6 +40,8 @@ import com.ironlogic.veyra.data.video.VideoLibraryRepository
 import com.ironlogic.veyra.data.video.VideoLibrarySettings
 import com.ironlogic.veyra.data.video.VideoLibrarySettingsStore
 import com.ironlogic.veyra.data.video.VideoRelatedItems
+import com.ironlogic.veyra.data.video.VideoContinueWatching
+import com.ironlogic.veyra.data.video.VideoContinueWatchingEntry
 import com.ironlogic.veyra.data.video.VideoPlaybackSettings
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoLibraryQuery
@@ -55,6 +57,7 @@ import com.ironlogic.veyra.ui.video.components.VideoMimeTypeOption
 import com.ironlogic.veyra.ui.video.components.VideoLibraryList
 import com.ironlogic.veyra.ui.video.components.VideoPlaybackContent
 import com.ironlogic.veyra.ui.video.components.VideoPlaybackSettingsContent
+import com.ironlogic.veyra.ui.video.components.VideoContinueWatchingContent
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -120,6 +123,9 @@ class MainActivity : ComponentActivity() {
                 var folderUris by remember { mutableStateOf(readPersistedFolderUris()) }
                 var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
                 var activeVideo by remember { mutableStateOf<VideoItem?>(null) }
+                var continueWatching by remember {
+                    mutableStateOf<List<VideoContinueWatchingEntry<VideoItem>>>(emptyList())
+                }
                 var status by remember { mutableStateOf("Choose how Veyra can access your videos.") }
                 var isLoading by remember { mutableStateOf(false) }
                 var searchQuery by remember { mutableStateOf("") }
@@ -168,8 +174,17 @@ class MainActivity : ComponentActivity() {
                 }
 
                 fun leavePlayback() {
-                    playbackSession?.engine?.pause()
-                    activeVideo = null
+                    val session = playbackSession
+                    scope.launch {
+                        session?.engine?.pause()
+                        try {
+                            session?.saveProgress()
+                        } catch (_: Exception) {
+                            status = "Playback progress could not be saved."
+                        } finally {
+                            activeVideo = null
+                        }
+                    }
                 }
 
                 fun playVideo(video: VideoItem) {
@@ -267,6 +282,22 @@ class MainActivity : ComponentActivity() {
                     val currentUri = playbackSession?.engine?.currentMediaUri()
                     if (currentUri != null) {
                         activeVideo = videos.firstOrNull { it.contentUri == currentUri }
+                    }
+                }
+
+                LaunchedEffect(playbackSession, videos, activeVideo) {
+                    if (playbackSession == null || activeVideo != null || videos.isEmpty()) {
+                        continueWatching = emptyList()
+                    } else {
+                        continueWatching = try {
+                            VideoContinueWatching.select(
+                                records = playbackSession.recentHistory(),
+                                candidates = videos,
+                                mediaUri = { it.contentUri.toString() }
+                            )
+                        } catch (_: Exception) {
+                            emptyList()
+                        }
                     }
                 }
 
@@ -445,6 +476,13 @@ class MainActivity : ComponentActivity() {
                                     mimeTypeOptions = mimeTypeOptions,
                                     selectedMimeTypes = selectedMimeTypes,
                                     onSelectedMimeTypesChange = { selectedMimeTypes = it }
+                                )
+                            }
+                            if (continueWatching.isNotEmpty()) {
+                                VideoContinueWatchingContent(
+                                    items = continueWatching,
+                                    onVideoClick = ::playVideo,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                             if (visibleVideos.isEmpty()) {
