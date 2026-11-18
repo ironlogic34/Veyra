@@ -16,6 +16,7 @@ import com.ironlogic.veyra.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
@@ -210,7 +211,16 @@ class VideoPlaybackService : Service() {
         }
         if (::mediaSession.isInitialized) mediaSession.release()
         if (::playbackSession.isInitialized) {
-            serviceScope.launch { playbackSession.release() }
+            val session = playbackSession
+            serviceScope.launch {
+                try {
+                    session.release()
+                } finally {
+                    serviceScope.cancel()
+                }
+            }
+        } else {
+            serviceScope.cancel()
         }
         super.onDestroy()
     }

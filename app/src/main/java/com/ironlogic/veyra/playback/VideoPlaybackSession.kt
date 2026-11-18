@@ -17,6 +17,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
 
 /**
  * Coordinates a player session with persisted progress and completion rules.
@@ -32,11 +33,13 @@ class VideoPlaybackSession(
 ) {
     val engine = VideoPlaybackEngine(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val historyMutex = Mutex()
     private var queue: List<Uri> = emptyList()
     private var completionMode: VideoCompletionMode = VideoCompletionMode.STOP
     private var completionHandled = false
     private var released = false
     private var pendingProgressSave: Job? = null
+    private var pendingCompletion: Job? = null
     private var lastObservedMediaUri: String? = null
     private var lastObservedDurationMs: Long? = null
 
@@ -99,7 +102,10 @@ class VideoPlaybackSession(
         queue = listOf(mediaUri)
         this.completionMode = completionMode
         completionHandled = false
-        val record = if (resume) history.find(mediaUri.toString()) else null
+        val record = if (resume) withHistoryLock {
+            checkActive()
+            history.find(mediaUri.toString())
+        } else null
         val position = VideoResumePolicy.resumePosition(record, mediaUri.toString()) ?: 0L
         engine.setRepeatOne(false)
         engine.prepare(mediaUri, position, playWhenReady = true)
@@ -120,7 +126,10 @@ class VideoPlaybackSession(
         this.completionMode = completionMode
         completionHandled = false
         val selectedUri = queue[startIndex]
-        val record = if (resume) history.find(selectedUri.toString()) else null
+        val record = if (resume) withHistoryLock {
+            checkActive()
+            history.find(selectedUri.toString())
+        } else null
         val position = VideoResumePolicy.resumePosition(record, selectedUri.toString()) ?: 0L
         engine.setRepeatOne(false)
         engine.prepareQueue(
@@ -139,35 +148,66 @@ class VideoPlaybackSession(
 
     suspend fun saveProgress() {
         checkActive()
-        pendingProgressSave?.join()
-        currentRecord()?.let { history.save(it) }
+        awaitPendingWrites()
+        withHistoryLock {
+            checkActive()
+            if (!completionHandled) {
+                currentRecord()?.takeIf { it.positionMs > 0L }?.let { history.save(it) }
+            }
+        }
     }
 
     suspend fun recentHistory(limit: Int = 50): List<VideoPlaybackRecord> {
         checkActive()
-        pendingProgressSave?.join()
-        return history.recent(limit)
+        awaitPendingWrites()
+        return withHistoryLock {
+            checkActive()
+            history.recent(limit)
+        }
     }
 
-    /** Saves the final position before releasing both player and database. */
+    /** Saves pending completion/progress writes before releasing player and history storage. */
     suspend fun release() {
         if (released) return
-        pendingProgressSave?.join()
-        currentRecord()?.let { history.save(it) }
         released = true
-        engine.removeListener(listener)
-        engine.close()
-        history.close()
+        awaitPendingWrites()
+        withHistoryLock {
+            if (!completionHandled) {
+                currentRecord()?.takeIf { it.positionMs > 0L }?.let { history.save(it) }
+            }
+            engine.removeListener(listener)
+            engine.close()
+            history.close()
+        }
         scope.cancel()
     }
 
     private suspend fun saveCurrentBeforeSwitch() {
+        awaitPendingWrites()
+        withHistoryLock {
+            checkActive()
+            if (!completionHandled) {
+                currentRecord()?.takeIf { it.positionMs > 0L }?.let { history.save(it) }
+            }
+        }
+    }
+
+    private suspend fun awaitPendingWrites() {
         pendingProgressSave?.join()
-        currentRecord()?.let { history.save(it) }
+        pendingCompletion?.join()
+    }
+
+    private suspend fun <T> withHistoryLock(block: suspend () -> T): T {
+        historyMutex.lock()
+        return try {
+            block()
+        } finally {
+            historyMutex.unlock()
+        }
     }
 
     private fun persistCurrentProgress() {
-        if (released) return
+        if (released || completionHandled) return
         val record = currentRecord() ?: return
         persistProgressRecord(record)
     }
@@ -177,7 +217,7 @@ class VideoPlaybackSession(
         val previousSave = pendingProgressSave
         pendingProgressSave = scope.launch {
             previousSave?.join()
-            history.save(record)
+            withHistoryLock { history.save(record) }
         }
     }
 
@@ -202,10 +242,18 @@ class VideoPlaybackSession(
         val durationMs = engine.snapshot().durationMs
         completionHandled = true
 
-        scope.launch {
-            history.save(
-                VideoResumePolicy.completed(currentUri, durationMs, nowEpochMs())
-            )
+        val previousCompletion = pendingCompletion
+        val progressSave = pendingProgressSave
+        pendingCompletion = scope.launch {
+            previousCompletion?.join()
+            progressSave?.join()
+            withHistoryLock {
+                history.save(
+                    VideoResumePolicy.completed(currentUri, durationMs, nowEpochMs())
+                )
+            }
+            if (released) return@launch
+
             when (val action = VideoCompletionPolicy.decide(
                 mode,
                 completionQueue.map(Uri::toString),
