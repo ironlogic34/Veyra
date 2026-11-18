@@ -9,6 +9,7 @@ import com.ironlogic.veyra.data.video.VideoCompletionMode
 import com.ironlogic.veyra.data.video.VideoCompletionPolicy
 import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoPlaybackRecord
+import com.ironlogic.veyra.data.video.VideoPlaybackTransitionPolicy
 import com.ironlogic.veyra.data.video.VideoResumePolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,8 @@ class VideoPlaybackSession(
     private var completionHandled = false
     private var released = false
     private var pendingProgressSave: Job? = null
+    private var lastObservedMediaUri: String? = null
+    private var lastObservedDurationMs: Long? = null
 
     private val listener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -44,6 +47,31 @@ class VideoPlaybackSession(
 
         override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
             completionHandled = false
+        }
+
+        override fun onPositionDiscontinuity(
+            oldPosition: Player.PositionInfo,
+            newPosition: Player.PositionInfo,
+            reason: Int
+        ) {
+            if (released || completionHandled || reason != Player.DISCONTINUITY_REASON_SEEK) return
+            if (oldPosition.mediaItemIndex == newPosition.mediaItemIndex) return
+
+            val oldUri = queue.getOrNull(oldPosition.mediaItemIndex)?.toString()
+            val newUri = queue.getOrNull(newPosition.mediaItemIndex)?.toString()
+            val oldDuration = lastObservedDurationMs.takeIf { lastObservedMediaUri == oldUri }
+            VideoPlaybackTransitionPolicy.progressForItemChange(
+                oldMediaUri = oldUri,
+                newMediaUri = newUri,
+                oldPositionMs = oldPosition.positionMs,
+                oldDurationMs = oldDuration,
+                nowEpochMs = nowEpochMs()
+            )?.let(::persistProgressRecord)
+        }
+
+        override fun onEvents(player: Player, events: Player.Events) {
+            lastObservedMediaUri = engine.currentMediaUri()?.toString()
+            lastObservedDurationMs = engine.snapshot().durationMs
         }
 
         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
@@ -141,7 +169,11 @@ class VideoPlaybackSession(
     private fun persistCurrentProgress() {
         if (released) return
         val record = currentRecord() ?: return
-        if (record.positionMs <= 0L) return
+        persistProgressRecord(record)
+    }
+
+    private fun persistProgressRecord(record: VideoPlaybackRecord) {
+        if (released || record.positionMs <= 0L) return
         val previousSave = pendingProgressSave
         pendingProgressSave = scope.launch {
             previousSave?.join()
