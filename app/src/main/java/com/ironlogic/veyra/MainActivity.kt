@@ -446,7 +446,6 @@ class MainActivity : ComponentActivity() {
                                     verticalItemSpacing = 8
                                 )
                             }
-                        }
                     }
                 }
             }
