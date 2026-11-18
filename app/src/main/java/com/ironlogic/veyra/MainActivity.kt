@@ -11,15 +11,12 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -37,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.ironlogic.veyra.data.video.VideoCompletionMode
 import com.ironlogic.veyra.data.video.VideoItem
+import com.ironlogic.veyra.data.video.VideoThumbnailDataSource
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
 import com.ironlogic.veyra.data.video.VideoLibrarySettings
 import com.ironlogic.veyra.data.video.VideoLibrarySettingsStore
@@ -52,6 +50,7 @@ import com.ironlogic.veyra.playback.VideoPlaybackSession
 import com.ironlogic.veyra.playback.VideoPlaybackSessionLifecycle
 import com.ironlogic.veyra.ui.theme.VeyraTheme
 import com.ironlogic.veyra.ui.video.components.VideoLibraryControls
+import com.ironlogic.veyra.ui.video.components.VideoLibraryList
 import com.ironlogic.veyra.ui.video.components.VideoPlaybackContent
 import com.ironlogic.veyra.ui.video.components.VideoPlaybackSettingsContent
 import kotlinx.coroutines.launch
@@ -136,6 +135,7 @@ class MainActivity : ComponentActivity() {
                 }
                 val scope = rememberCoroutineScope()
                 val playbackSession = playbackSessionState.value
+                val thumbnailDataSource = remember { VideoThumbnailDataSource(applicationContext) }
                 val visibleVideos = remember(videos, searchQuery, sortOrder) {
                     VideoLibraryQuery.apply(
                         items = videos,
@@ -438,24 +438,13 @@ class MainActivity : ComponentActivity() {
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             } else {
-                                LazyColumn(
+                                VideoLibraryList(
+                                    videos = visibleVideos,
+                                    thumbnailDataSource = thumbnailDataSource,
+                                    onVideoClick = ::playVideo,
                                     modifier = Modifier.fillMaxWidth().weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    items(visibleVideos, key = { it.contentUri.toString() }) { video ->
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { playVideo(video) }
-                                            .padding(vertical = 8.dp)
-                                    ) {
-                                        Text(video.displayName, style = MaterialTheme.typography.bodyLarge)
-                                        Text(
-                                            video.relativePath ?: "Device library",
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                    }
-                                }
+                                    verticalItemSpacing = 8
+                                )
                             }
                         }
                     }
