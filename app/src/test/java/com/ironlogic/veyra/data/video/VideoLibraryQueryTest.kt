@@ -96,6 +96,19 @@ class VideoLibraryQueryTest {
     }
 
     @Test
+    fun emptyMimeFilterMatchesNoItems() {
+        assertEquals(emptyList<Entry>(), query(mimeTypes = emptySet()))
+    }
+
+    @Test
+    fun combinesSearchAndMimeFilters() {
+        assertEquals(
+            listOf(alpha),
+            query(search = "alpha", mimeTypes = setOf("video/mp4"))
+        )
+    }
+
+    @Test
     fun doesNotMutateTheInputList() {
         val input = listOf(alpha, beta, gamma)
         query(items = input, order = VideoSortOrder.NAME_A_TO_Z)

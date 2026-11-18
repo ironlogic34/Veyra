@@ -51,10 +51,12 @@ import com.ironlogic.veyra.playback.VideoPlaybackSession
 import com.ironlogic.veyra.playback.VideoPlaybackSessionLifecycle
 import com.ironlogic.veyra.ui.theme.VeyraTheme
 import com.ironlogic.veyra.ui.video.components.VideoLibraryControls
+import com.ironlogic.veyra.ui.video.components.VideoMimeTypeOption
 import com.ironlogic.veyra.ui.video.components.VideoLibraryList
 import com.ironlogic.veyra.ui.video.components.VideoPlaybackContent
 import com.ironlogic.veyra.ui.video.components.VideoPlaybackSettingsContent
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
 
@@ -121,6 +123,7 @@ class MainActivity : ComponentActivity() {
                 var status by remember { mutableStateOf("Choose how Veyra can access your videos.") }
                 var isLoading by remember { mutableStateOf(false) }
                 var searchQuery by remember { mutableStateOf("") }
+                var selectedMimeTypes by remember { mutableStateOf<Set<String>?>(null) }
                 val librarySettingsStore = remember {
                     VideoLibrarySettingsStore(applicationContext)
                 }
@@ -138,11 +141,23 @@ class MainActivity : ComponentActivity() {
                 val playbackSession = playbackSessionState.value
                 val thumbnailDataSource = remember { VideoThumbnailDataSource(applicationContext) }
                 val metadataRepository = remember { VideoMetadataRepository(applicationContext) }
-                val visibleVideos = remember(videos, searchQuery, sortOrder) {
+                val mimeTypeOptions = remember(videos) {
+                    videos.mapNotNull { it.mimeType?.lowercase(Locale.ROOT) }
+                        .distinct()
+                        .sorted()
+                        .map { mimeType ->
+                            VideoMimeTypeOption(
+                                label = videoMimeTypeLabel(mimeType),
+                                mimeTypes = setOf(mimeType)
+                            )
+                        }
+                }
+                val visibleVideos = remember(videos, searchQuery, sortOrder, selectedMimeTypes) {
                     VideoLibraryQuery.apply(
                         items = videos,
                         searchQuery = searchQuery,
                         sortOrder = sortOrder,
+                        allowedMimeTypes = selectedMimeTypes,
                         displayName = VideoItem::displayName,
                         relativePath = VideoItem::relativePath,
                         durationMs = VideoItem::durationMs,
@@ -426,7 +441,10 @@ class MainActivity : ComponentActivity() {
                                         sortOrder = it
                                         librarySettingsStore.save(VideoLibrarySettings(sortOrder = it))
                                     },
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth(),
+                                    mimeTypeOptions = mimeTypeOptions,
+                                    selectedMimeTypes = selectedMimeTypes,
+                                    onSelectedMimeTypesChange = { selectedMimeTypes = it }
                                 )
                             }
                             if (visibleVideos.isEmpty()) {
@@ -472,4 +490,14 @@ class MainActivity : ComponentActivity() {
             kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Main.immediate
         )
     }
+}
+
+private fun videoMimeTypeLabel(mimeType: String): String = when (mimeType.lowercase(Locale.ROOT)) {
+    "video/mp4" -> "MP4"
+    "video/x-matroska" -> "MKV"
+    "video/webm" -> "WebM"
+    "video/3gpp" -> "3GP"
+    "video/quicktime" -> "MOV"
+    "video/x-msvideo" -> "AVI"
+    else -> mimeType.substringAfter('/').removePrefix("x-").uppercase(Locale.ROOT)
 }
