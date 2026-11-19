@@ -2,6 +2,7 @@ package com.ironlogic.veyra
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -9,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,12 +32,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
+import com.ironlogic.veyra.data.video.VideoThumbnailRepository
 import com.ironlogic.veyra.ui.theme.VeyraTheme
 import kotlinx.coroutines.launch
 
@@ -65,6 +71,7 @@ private fun VeyraHome() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { VideoLibraryRepository(context.contentResolver) }
+    val thumbnailRepository = remember { VideoThumbnailRepository(context.contentResolver) }
     val permission = remember { videoPermission() }
     var permissionGranted by remember {
         mutableStateOf(
@@ -99,6 +106,7 @@ private fun VeyraHome() {
             videos = videos,
             isLoading = isLoading,
             hasPermission = permissionGranted,
+            thumbnailRepository = thumbnailRepository,
             onRequestPermission = { permissionLauncher.launch(permission) },
             onRefresh = ::refresh,
         )
@@ -164,6 +172,7 @@ private fun LibraryContent(
     videos: List<VideoItem>,
     isLoading: Boolean,
     hasPermission: Boolean,
+    thumbnailRepository: VideoThumbnailRepository,
     onRequestPermission: () -> Unit,
     onRefresh: () -> Unit,
 ) {
@@ -175,7 +184,7 @@ private fun LibraryContent(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            items(videos, key = { it.id }) { video -> VideoRow(video) }
+            items(videos, key = { it.id }) { video -> VideoRow(video, thumbnailRepository) }
         }
     }
 }
@@ -253,7 +262,7 @@ private fun EmptyLibraryCard(onRefresh: () -> Unit) {
 }
 
 @Composable
-private fun VideoRow(video: VideoItem) {
+private fun VideoRow(video: VideoItem, thumbnailRepository: VideoThumbnailRepository) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -262,16 +271,36 @@ private fun VideoRow(video: VideoItem) {
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        VideoThumbnail(video, thumbnailRepository)
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(video.displayName, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text(formatDuration(video.durationMs), color = VeyraColors.muted, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun VideoThumbnail(video: VideoItem, repository: VideoThumbnailRepository) {
+    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = video.contentUri) {
+        value = repository.load(video)
+    }
+
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap!!.asImageBitmap(),
+            contentDescription = video.displayName,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .width(76.dp)
+                .height(52.dp),
+        )
+    } else {
         Box(
             modifier = Modifier
                 .width(76.dp)
                 .height(52.dp)
                 .background(VeyraColors.thumbnail, RoundedCornerShape(12.dp)),
         )
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(video.displayName, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text(formatDuration(video.durationMs), color = VeyraColors.muted, fontSize = 12.sp)
-        }
     }
 }
 
