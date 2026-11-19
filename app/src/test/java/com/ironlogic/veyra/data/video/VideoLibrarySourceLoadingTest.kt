@@ -32,11 +32,13 @@ class VideoLibrarySourceLoadingTest {
     }
 
     @Test(expected = CancellationException::class)
-    fun propagatesCancellationInsteadOfTreatingItAsProviderFailure() = runBlocking {
-        loadVideoSourceSafely<List<String>>(
-            onFailure = { throw AssertionError("Cancellation must not be reported as a provider failure.") }
-        ) {
-            throw CancellationException("library scan cancelled")
+    fun propagatesCancellationInsteadOfTreatingItAsProviderFailure() {
+        runBlocking {
+            loadVideoSourceSafely<List<String>>(
+                onFailure = { throw AssertionError("Cancellation must not be reported as a provider failure.") }
+            ) {
+                throw CancellationException("library scan cancelled")
+            }
         }
     }
 }
