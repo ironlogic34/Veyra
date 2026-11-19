@@ -8,7 +8,7 @@ Veyra is a private, local-first Android media environment. This branch is a fres
 
 The first pass establishes a clean Android-native project using Kotlin, Jetpack Compose and Material 3. It includes an intentionally small library shell with separate phone and tablet landscape layout branches, plus the initial dark cinematic visual language.
 
-The next pass now includes permission-aware MediaStore scanning. After granting video access, the library renders local video names and durations without copying or uploading media. Playback and thumbnail extraction are the next milestones.
+The current branch includes permission-aware MediaStore scanning, local thumbnails, and the first Media3 playback screen. After granting video access, the library renders local videos without copying or uploading media. Tapping a video opens playback, and Veyra saves the last position for Continue Watching.
 
 ## V1 direction
 

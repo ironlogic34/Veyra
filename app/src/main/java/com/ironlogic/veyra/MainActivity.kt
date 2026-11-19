@@ -9,8 +9,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,8 +50,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
+import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoThumbnailRepository
 import com.ironlogic.veyra.ui.theme.VeyraTheme
+import com.ironlogic.veyra.ui.video.VideoPlayerScreen
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -72,6 +75,7 @@ private fun VeyraHome() {
     val scope = rememberCoroutineScope()
     val repository = remember { VideoLibraryRepository(context.contentResolver) }
     val thumbnailRepository = remember { VideoThumbnailRepository(context.contentResolver) }
+    val progressStore = remember { VideoPlaybackProgressStore(context) }
     val permission = remember { videoPermission() }
     var permissionGranted by remember {
         mutableStateOf(
@@ -80,6 +84,20 @@ private fun VeyraHome() {
     }
     var isLoading by remember { mutableStateOf(false) }
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
+    var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
+    var continueWatching by remember { mutableStateOf(progressStore.read()) }
+
+    selectedVideo?.let { video ->
+        VideoPlayerScreen(
+            video = video,
+            progressStore = progressStore,
+            onBack = {
+                continueWatching = progressStore.read()
+                selectedVideo = null
+            },
+        )
+        return
+    }
 
     fun refresh() {
         scope.launch {
@@ -107,20 +125,24 @@ private fun VeyraHome() {
             isLoading = isLoading,
             hasPermission = permissionGranted,
             thumbnailRepository = thumbnailRepository,
+            onOpenVideo = { selectedVideo = it },
             onRequestPermission = { permissionLauncher.launch(permission) },
             onRefresh = ::refresh,
         )
     }
 
     if (isTabletLandscape) {
-        TabletLibraryShell(content)
+        TabletLibraryShell(content, continueWatching)
     } else {
-        PhoneLibraryShell(content)
+        PhoneLibraryShell(content, continueWatching)
     }
 }
 
 @Composable
-private fun PhoneLibraryShell(content: @Composable () -> Unit) {
+private fun PhoneLibraryShell(
+    content: @Composable () -> Unit,
+    progress: com.ironlogic.veyra.data.video.VideoProgress?,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -129,7 +151,7 @@ private fun PhoneLibraryShell(content: @Composable () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Header()
-        ContinueWatchingCard(modifier = Modifier.fillMaxWidth())
+        ContinueWatchingCard(progress = progress, modifier = Modifier.fillMaxWidth())
         SectionTitle("Your library")
         content()
         Spacer(modifier = Modifier.weight(1f))
@@ -138,7 +160,10 @@ private fun PhoneLibraryShell(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun TabletLibraryShell(content: @Composable () -> Unit) {
+private fun TabletLibraryShell(
+    content: @Composable () -> Unit,
+    progress: com.ironlogic.veyra.data.video.VideoProgress?,
+) {
     Row(
         modifier = Modifier
             .fillMaxSize()
@@ -160,7 +185,7 @@ private fun TabletLibraryShell(content: @Composable () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Header()
-            ContinueWatchingCard(modifier = Modifier.fillMaxWidth())
+            ContinueWatchingCard(progress = progress, modifier = Modifier.fillMaxWidth())
             SectionTitle("Your library")
             content()
         }
@@ -173,6 +198,7 @@ private fun LibraryContent(
     isLoading: Boolean,
     hasPermission: Boolean,
     thumbnailRepository: VideoThumbnailRepository,
+    onOpenVideo: (VideoItem) -> Unit,
     onRequestPermission: () -> Unit,
     onRefresh: () -> Unit,
 ) {
@@ -184,7 +210,7 @@ private fun LibraryContent(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            items(videos, key = { it.id }) { video -> VideoRow(video, thumbnailRepository) }
+            items(videos, key = { it.id }) { video -> VideoRow(video, thumbnailRepository, onOpenVideo) }
         }
     }
 }
@@ -198,7 +224,10 @@ private fun Header() {
 }
 
 @Composable
-private fun ContinueWatchingCard(modifier: Modifier = Modifier) {
+private fun ContinueWatchingCard(
+    progress: com.ironlogic.veyra.data.video.VideoProgress?,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = modifier
             .height(150.dp)
@@ -208,8 +237,18 @@ private fun ContinueWatchingCard(modifier: Modifier = Modifier) {
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("CONTINUE WATCHING", color = VeyraColors.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Text("Your next memory will appear here.", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
-            Text("Veyra will remember where you stopped.", color = VeyraColors.muted, fontSize = 13.sp)
+            Text(
+                progress?.displayName ?: "Your next memory will appear here.",
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                progress?.let { "Resume from ${formatDuration(it.positionMs)}" }
+                    ?: "Veyra will remember where you stopped.",
+                color = VeyraColors.muted,
+                fontSize = 13.sp,
+            )
         }
     }
 }
@@ -262,11 +301,16 @@ private fun EmptyLibraryCard(onRefresh: () -> Unit) {
 }
 
 @Composable
-private fun VideoRow(video: VideoItem, thumbnailRepository: VideoThumbnailRepository) {
+private fun VideoRow(
+    video: VideoItem,
+    thumbnailRepository: VideoThumbnailRepository,
+    onOpenVideo: (VideoItem) -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(VeyraColors.surface, RoundedCornerShape(18.dp))
+            .clickable { onOpenVideo(video) }
             .padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
