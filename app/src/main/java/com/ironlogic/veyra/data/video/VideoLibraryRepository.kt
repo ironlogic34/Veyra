@@ -3,11 +3,25 @@ package com.ironlogic.veyra.data.video
 import android.content.ContentResolver
 import android.net.Uri
 import com.ironlogic.veyra.permissions.VideoAccessLevel
+import kotlinx.coroutines.CancellationException
 
 data class VideoLibraryResult(
     val videos: List<VideoItem>,
     val errors: List<String>
 )
+
+/** Keeps ordinary provider failures recoverable without turning cancellation into an empty result. */
+internal suspend fun <T : Any> loadVideoSourceSafely(
+    onFailure: (Exception) -> Unit,
+    source: suspend () -> T
+): T? = try {
+    source()
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (failure: Exception) {
+    onFailure(failure)
+    null
+}
 
 /**
  * Combines device-library and user-selected-folder sources.
@@ -26,23 +40,31 @@ class VideoLibraryRepository(
         val errors = mutableListOf<String>()
 
         if (accessLevel != VideoAccessLevel.NONE) {
-            try {
-                sources += MediaStoreVideoDataSource(contentResolver).getVideos()
-            } catch (_: SecurityException) {
-                errors += "Device-library permission changed."
-            } catch (_: Exception) {
-                errors += "Could not read the device video library."
-            }
+            loadVideoSourceSafely(
+                onFailure = { failure ->
+                    errors += if (failure is SecurityException) {
+                        "Device-library permission changed."
+                    } else {
+                        "Could not read the device video library."
+                    }
+                }
+            ) {
+                MediaStoreVideoDataSource(contentResolver).getVideos()
+            }?.let(sources::add)
         }
 
         folderUris.distinctBy(Uri::toString).forEachIndexed { index, folderUri ->
-            try {
-                sources += SafVideoFolderDataSource(contentResolver).getVideos(folderUri)
-            } catch (_: SecurityException) {
-                errors += "Access to saved folder ${index + 1} was revoked."
-            } catch (_: Exception) {
-                errors += "Saved folder ${index + 1} could not be scanned."
-            }
+            loadVideoSourceSafely(
+                onFailure = { failure ->
+                    errors += if (failure is SecurityException) {
+                        "Access to saved folder ${index + 1} was revoked."
+                    } else {
+                        "Saved folder ${index + 1} could not be scanned."
+                    }
+                }
+            ) {
+                SafVideoFolderDataSource(contentResolver).getVideos(folderUri)
+            }?.let(sources::add)
         }
 
         val merged = VideoLibraryMerger.merge(

@@ -58,6 +58,7 @@ import com.ironlogic.veyra.ui.video.components.VideoLibraryList
 import com.ironlogic.veyra.ui.video.components.VideoPlaybackContent
 import com.ironlogic.veyra.ui.video.components.VideoPlaybackSettingsContent
 import com.ironlogic.veyra.ui.video.components.VideoContinueWatchingContent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.Locale
 
@@ -179,6 +180,8 @@ class MainActivity : ComponentActivity() {
                         session?.engine?.pause()
                         try {
                             session?.saveProgress()
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
                         } catch (_: Exception) {
                             status = "Playback progress could not be saved."
                         } finally {
@@ -209,6 +212,8 @@ class MainActivity : ComponentActivity() {
                             )
                             activeVideo = video
                             status = "Playing ${video.displayName}"
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
                         } catch (_: Exception) {
                             status = "This video could not be opened. Its access may have changed."
                         }
@@ -270,6 +275,8 @@ class MainActivity : ComponentActivity() {
                                 videos.isEmpty() -> "No videos found in the accessible locations."
                                 else -> "Found ${videos.size} video(s)."
                             }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
                         } catch (_: Exception) {
                             status = "The video library could not be loaded. Try refreshing."
                         } finally {
@@ -297,6 +304,8 @@ class MainActivity : ComponentActivity() {
                                 candidates = videos,
                                 mediaUri = { it.contentUri.toString() }
                             )
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
                         } catch (_: Exception) {
                             emptyList()
                         }

@@ -4,17 +4,21 @@ import android.content.ContentResolver
 import android.net.Uri
 import android.provider.DocumentsContract
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /** Recursively reads videos from a user-selected SAF tree with a persisted read grant. */
 class SafVideoFolderDataSource(private val contentResolver: ContentResolver) {
     suspend fun getVideos(treeUri: Uri): List<VideoItem> = withContext(Dispatchers.IO) {
+        val coroutineContext = currentCoroutineContext()
         val pending = ArrayDeque<Pair<String, String>>()
         val visited = mutableSetOf<String>()
         val videos = mutableListOf<VideoItem>()
         pending.addLast(DocumentsContract.getTreeDocumentId(treeUri) to "")
 
         while (pending.isNotEmpty()) {
+            coroutineContext.ensureActive()
             val (parentId, parentPath) = pending.removeFirst()
             if (!visited.add(parentId)) continue
 
@@ -34,6 +38,7 @@ class SafVideoFolderDataSource(private val contentResolver: ContentResolver) {
                 val modifiedColumn = cursor.getColumnIndex(DocumentsContract.Document.COLUMN_LAST_MODIFIED)
 
                 while (cursor.moveToNext()) {
+                    coroutineContext.ensureActive()
                     val documentId = cursor.getString(idColumn) ?: continue
                     val name = cursor.getString(nameColumn) ?: "Untitled"
                     val mimeType = cursor.getString(mimeColumn)

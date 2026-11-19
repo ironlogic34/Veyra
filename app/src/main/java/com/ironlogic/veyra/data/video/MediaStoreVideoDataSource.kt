@@ -6,6 +6,8 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
@@ -19,6 +21,7 @@ class MediaStoreVideoDataSource(
     private val contentResolver: ContentResolver
 ) {
     suspend fun getVideos(): List<VideoItem> = withContext(Dispatchers.IO) {
+        val coroutineContext = currentCoroutineContext()
         val collection = MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         val projection = buildList {
             add(MediaStore.Video.Media._ID)
@@ -61,6 +64,7 @@ class MediaStoreVideoDataSource(
             }
 
             while (cursor.moveToNext()) {
+                coroutineContext.ensureActive()
                 val id = cursor.getLong(idColumn)
                 result += VideoItem(
                     contentUri = ContentUris.withAppendedId(collection, id),
