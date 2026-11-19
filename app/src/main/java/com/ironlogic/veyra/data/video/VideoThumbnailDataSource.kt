@@ -16,16 +16,24 @@ class VideoThumbnailDataSource(
     private val context: Context,
     maxEntries: Int = 120
 ) {
-    private val cache = LruCache<String, Bitmap>(maxEntries.coerceAtLeast(1))
+    private val cache = LruCache<VideoThumbnailCacheKey, Bitmap>(maxEntries.coerceAtLeast(1))
 
     suspend fun load(
         uri: Uri,
         requestedWidth: Int = 320,
-        requestedHeight: Int = 180
+        requestedHeight: Int = 180,
+        dateModifiedSeconds: Long = 0L,
+        sizeBytes: Long = 0L
     ): Bitmap? = withContext(Dispatchers.IO) {
         val width = requestedWidth.coerceIn(1, 640)
         val height = requestedHeight.coerceIn(1, 640)
-        val key = "${uri}|${width}x${height}"
+        val key = VideoThumbnailCacheKey(
+            contentUri = uri.toString(),
+            dateModifiedSeconds = dateModifiedSeconds,
+            sizeBytes = sizeBytes,
+            width = width,
+            height = height
+        )
         cache.get(key)?.let { return@withContext it }
 
         val retriever = MediaMetadataRetriever()
@@ -75,3 +83,12 @@ class VideoThumbnailDataSource(
         cache.evictAll()
     }
 }
+
+/** File-version-aware identity prevents stale frames when a provider reuses a URI. */
+internal data class VideoThumbnailCacheKey(
+    val contentUri: String,
+    val dateModifiedSeconds: Long,
+    val sizeBytes: Long,
+    val width: Int,
+    val height: Int
+)

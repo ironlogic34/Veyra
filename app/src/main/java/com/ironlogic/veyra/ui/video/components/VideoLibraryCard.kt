@@ -36,12 +36,25 @@ fun VideoLibraryCard(
     onClick: (VideoItem) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var thumbnail by remember(video.contentUri) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    var thumbnail by remember(
+        video.contentUri,
+        video.dateModifiedSeconds,
+        video.sizeBytes
+    ) { mutableStateOf<android.graphics.Bitmap?>(null) }
 
     var enrichedVideo by remember(video.contentUri) { mutableStateOf(video) }
 
-    LaunchedEffect(video.contentUri, thumbnailDataSource) {
-        thumbnail = thumbnailDataSource.load(video.contentUri)
+    LaunchedEffect(
+        video.contentUri,
+        video.dateModifiedSeconds,
+        video.sizeBytes,
+        thumbnailDataSource
+    ) {
+        thumbnail = thumbnailDataSource.load(
+            uri = video.contentUri,
+            dateModifiedSeconds = video.dateModifiedSeconds,
+            sizeBytes = video.sizeBytes
+        )
     }
 
     LaunchedEffect(video, metadataRepository) {
