@@ -1,31 +1,25 @@
 # Veyra
 
-A local-first Android media player and multi-device media ecosystem.
+Veyra is a private, local-first Android media environment. This branch is a fresh V1 implementation started from the clean `main` branch; the historical `setup/android-foundation` branch is preserved separately for reference and is not being overwritten.
 
-## Project status
+## Current branch
 
-Veyra is at the foundation stage. The repository is being set up before feature implementation.
+`dev/fresh-v1-foundation`
 
-## Product principles
+The first pass establishes a clean Android-native project using Kotlin, Jetpack Compose and Material 3. It includes an intentionally small library shell with separate phone and tablet landscape layout branches, plus the initial dark cinematic visual language.
 
-- Offline-first: local media browsing and playback must work without internet or another device.
-- Android-native: built with Kotlin and Jetpack Compose.
-- Distinct form factors: phone and tablet layouts are independently designed; the tablet UI is not a scaled phone layout.
-- User-controlled sharing: devices share media only when hosting is explicitly enabled and access is authorized.
-- No accidental downloads: remote playback should stream media rather than copy entire files by default.
+## V1 direction
 
-## Planned areas
+V1 is video-only: local discovery, folder access, thumbnails, playback, progress persistence, history, subtitles, playback preferences and Memory Marks. Music, streaming, casting and connected-device features remain V2 work.
 
-- Local video and music libraries
-- Media playback and playback-state persistence
-- A Stream area for connected devices, remote libraries, and casting
-- Authorized cross-device comments
-- Dedicated phone and tablet experiences
+## Build
 
-## Development
+Open the repository in Android Studio and run the `app` configuration. The project uses Gradle Kotlin DSL, Kotlin 2.2.20, Android Gradle Plugin 8.13.2, compile/target SDK 36 and min SDK 26.
 
-See `docs/architecture/overview.md` for the current architectural direction and decisions still awaiting detailed design.
+The sandbox used for this initial commit does not include a local Android SDK or Gradle installation, so device compilation must be verified in Android Studio or Termux with the Android toolchain installed.
 
-## Status
+## Repository branches
 
-No playback, library scanning, streaming, or final UI has been implemented yet. Those will be introduced in small, reviewable changes.
+- `main`: original project documentation.
+- `setup/android-foundation`: preserved historical prototype and tests.
+- `dev/fresh-v1-foundation`: clean implementation path from `main`.
