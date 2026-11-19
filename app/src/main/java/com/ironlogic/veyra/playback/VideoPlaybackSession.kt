@@ -14,10 +14,12 @@ import com.ironlogic.veyra.data.video.VideoResumePolicy
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 
 /**
  * Coordinates a player session with persisted progress and completion rules.
@@ -170,16 +172,34 @@ class VideoPlaybackSession(
     suspend fun release() {
         if (released) return
         released = true
-        awaitPendingWrites()
-        withHistoryLock {
-            if (!completionHandled) {
-                currentRecord()?.takeIf { it.positionMs > 0L }?.let { history.save(it) }
+        try {
+            withContext(NonCancellable) {
+                try {
+                    awaitPendingWrites()
+                } finally {
+                    withHistoryLock {
+                        releasePlaybackResources(
+                            saveFinalProgress = {
+                                if (!completionHandled) {
+                                    currentRecord()?.takeIf { it.positionMs > 0L }
+                                        ?.let { history.save(it) }
+                                }
+                            },
+                            releasePlayer = {
+                                try {
+                                    engine.removeListener(listener)
+                                } finally {
+                                    engine.close()
+                                }
+                            },
+                            closeHistory = { history.close() }
+                        )
+                    }
+                }
             }
-            engine.removeListener(listener)
-            engine.close()
-            history.close()
+        } finally {
+            scope.cancel()
         }
-        scope.cancel()
     }
 
     private suspend fun saveCurrentBeforeSwitch() {
