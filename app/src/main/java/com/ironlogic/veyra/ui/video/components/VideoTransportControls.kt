@@ -10,9 +10,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.ironlogic.veyra.data.video.VideoSeekPolicy
 import java.util.Locale
 
 /**
@@ -30,6 +35,8 @@ fun VideoTransportControls(
 ) {
     val duration = durationMs?.takeIf { it > 0L }
     val safePosition = positionMs.coerceAtLeast(0L).coerceAtMost(duration ?: Long.MAX_VALUE)
+    var isScrubbing by remember(duration) { mutableStateOf(false) }
+    var scrubPosition by remember(duration) { mutableStateOf(safePosition.toFloat()) }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -37,8 +44,19 @@ fun VideoTransportControls(
     ) {
         if (duration != null) {
             Slider(
-                value = safePosition.toFloat().coerceIn(0f, duration.toFloat()),
-                onValueChange = { onSeek(it.toLong()) },
+                value = if (isScrubbing) {
+                    scrubPosition.coerceIn(0f, duration.toFloat())
+                } else {
+                    safePosition.toFloat()
+                },
+                onValueChange = {
+                    scrubPosition = it
+                    isScrubbing = true
+                },
+                onValueChangeFinished = {
+                    onSeek(VideoSeekPolicy.clampSliderPosition(scrubPosition, duration))
+                    isScrubbing = false
+                },
                 valueRange = 0f..duration.toFloat(),
                 modifier = Modifier.fillMaxWidth()
             )
