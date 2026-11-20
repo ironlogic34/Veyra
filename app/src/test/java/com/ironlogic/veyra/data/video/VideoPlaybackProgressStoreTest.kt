@@ -10,10 +10,12 @@ class VideoPlaybackProgressStoreTest {
             contentUri = "content://media/external/video/media/7",
             displayName = "Travel film.mp4",
             positionMs = 12_500,
+            durationMs = 120_000,
         )
 
         assertEquals("content://media/external/video/media/7", progress.contentUri)
         assertEquals("Travel film.mp4", progress.displayName)
         assertEquals(12_500, progress.positionMs)
+        assertEquals(120_000, progress.durationMs)
     }
 }

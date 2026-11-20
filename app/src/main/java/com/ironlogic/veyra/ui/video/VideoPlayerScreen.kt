@@ -17,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.ironlogic.veyra.data.video.VideoItem
@@ -33,7 +34,7 @@ fun VideoPlayerScreen(
     val player = remember(video.contentUri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(video.contentUri))
-            seekTo(progressStore.read()?.takeIf { it.contentUri == video.contentUri }?.positionMs ?: 0L)
+            seekTo(progressStore.read(video)?.positionMs ?: 0L)
             prepare()
             playWhenReady = true
         }
@@ -42,13 +43,23 @@ fun VideoPlayerScreen(
     LaunchedEffect(player, video.contentUri) {
         while (true) {
             delay(1_000)
-            progressStore.save(video, player.currentPosition)
+            if (player.playbackState == Player.STATE_ENDED) {
+                progressStore.clear(video)
+                break
+            }
+            val durationMs = player.duration.takeIf { it > 0L } ?: video.durationMs
+            progressStore.save(video, player.currentPosition, durationMs)
         }
     }
 
     DisposableEffect(player) {
         onDispose {
-            progressStore.save(video, player.currentPosition)
+            if (player.playbackState == Player.STATE_ENDED) {
+                progressStore.clear(video)
+            } else {
+                val durationMs = player.duration.takeIf { it > 0L } ?: video.durationMs
+                progressStore.save(video, player.currentPosition, durationMs)
+            }
             player.release()
         }
     }
@@ -63,7 +74,11 @@ fun VideoPlayerScreen(
             modifier = Modifier.fillMaxSize(),
         )
         Button(
-            onClick = onBack,
+            onClick = {
+                val durationMs = player.duration.takeIf { it > 0L } ?: video.durationMs
+                progressStore.save(video, player.currentPosition, durationMs)
+                onBack()
+            },
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .padding(16.dp),
