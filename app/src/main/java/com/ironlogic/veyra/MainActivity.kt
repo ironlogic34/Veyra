@@ -1,6 +1,6 @@
 package com.ironlogic.veyra
 
-import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Build
@@ -48,6 +48,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.ironlogic.veyra.data.video.VideoAccessPermission
+import com.ironlogic.veyra.data.video.VideoAccessState
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
@@ -76,12 +78,10 @@ private fun VeyraHome() {
     val repository = remember { VideoLibraryRepository(context.contentResolver) }
     val thumbnailRepository = remember { VideoThumbnailRepository(context.contentResolver) }
     val progressStore = remember { VideoPlaybackProgressStore(context) }
-    val permission = remember { videoPermission() }
-    var permissionGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED,
-        )
+    val permissionRequests = remember {
+        VideoAccessPermission.requestedPermissions(Build.VERSION.SDK_INT)
     }
+    var videoAccess by remember { mutableStateOf(currentVideoAccess(context)) }
     var isLoading by remember { mutableStateOf(false) }
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
@@ -108,14 +108,13 @@ private fun VeyraHome() {
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        permissionGranted = granted
-        if (granted) refresh()
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) {
+        videoAccess = currentVideoAccess(context)
     }
 
-    LaunchedEffect(permissionGranted) {
-        if (permissionGranted) refresh()
+    LaunchedEffect(videoAccess) {
+        if (videoAccess != VideoAccessState.NONE) refresh()
     }
 
     val isTabletLandscape = LocalConfiguration.current.screenWidthDp >= 600
@@ -123,10 +122,10 @@ private fun VeyraHome() {
         LibraryContent(
             videos = videos,
             isLoading = isLoading,
-            hasPermission = permissionGranted,
+            hasPermission = videoAccess != VideoAccessState.NONE,
             thumbnailRepository = thumbnailRepository,
             onOpenVideo = { selectedVideo = it },
-            onRequestPermission = { permissionLauncher.launch(permission) },
+            onRequestPermission = { permissionLauncher.launch(permissionRequests) },
             onRefresh = ::refresh,
         )
     }
@@ -363,10 +362,15 @@ private fun FloatingDock() {
     }
 }
 
-private fun videoPermission(): String = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-    Manifest.permission.READ_MEDIA_VIDEO
-} else {
-    Manifest.permission.READ_EXTERNAL_STORAGE
+private fun currentVideoAccess(context: Context): VideoAccessState {
+    val grantedPermissions = VideoAccessPermission
+        .requestedPermissions(Build.VERSION.SDK_INT)
+        .filter { permission ->
+            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+        }
+        .toSet()
+
+    return VideoAccessPermission.resolve(Build.VERSION.SDK_INT, grantedPermissions)
 }
 
 private fun formatDuration(durationMs: Long): String {
