@@ -52,10 +52,12 @@ import com.ironlogic.veyra.data.video.VideoAccessPermission
 import com.ironlogic.veyra.data.video.VideoAccessState
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
+import com.ironlogic.veyra.data.video.VideoLibraryScanError
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoThumbnailRepository
 import com.ironlogic.veyra.ui.theme.VeyraTheme
 import com.ironlogic.veyra.ui.video.VideoPlayerScreen
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -83,6 +85,7 @@ private fun VeyraHome() {
     }
     var videoAccess by remember { mutableStateOf(currentVideoAccess(context)) }
     var isLoading by remember { mutableStateOf(false) }
+    var scanError by remember { mutableStateOf<String?>(null) }
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
     var continueWatching by remember { mutableStateOf(progressStore.read()) }
@@ -100,10 +103,23 @@ private fun VeyraHome() {
     }
 
     fun refresh() {
+        if (isLoading) return
+
         scope.launch {
             isLoading = true
-            videos = repository.scan()
-            isLoading = false
+            scanError = null
+            try {
+                videos = repository.scan()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (exception: Exception) {
+                if (exception is SecurityException) {
+                    videoAccess = currentVideoAccess(context)
+                }
+                scanError = VideoLibraryScanError.messageFor(exception)
+            } finally {
+                isLoading = false
+            }
         }
     }
 
@@ -122,6 +138,7 @@ private fun VeyraHome() {
         LibraryContent(
             videos = videos,
             isLoading = isLoading,
+            scanError = scanError,
             hasPermission = videoAccess != VideoAccessState.NONE,
             thumbnailRepository = thumbnailRepository,
             onOpenVideo = { selectedVideo = it },
@@ -195,6 +212,7 @@ private fun TabletLibraryShell(
 private fun LibraryContent(
     videos: List<VideoItem>,
     isLoading: Boolean,
+    scanError: String?,
     hasPermission: Boolean,
     thumbnailRepository: VideoThumbnailRepository,
     onOpenVideo: (VideoItem) -> Unit,
@@ -204,12 +222,23 @@ private fun LibraryContent(
     when {
         !hasPermission -> PermissionCard(onRequestPermission)
         isLoading -> StatusCard("Looking through your local videos…")
-        videos.isEmpty() -> EmptyLibraryCard(onRefresh)
-        else -> LazyColumn(
+        else -> Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            items(videos, key = { it.id }) { video -> VideoRow(video, thumbnailRepository, onOpenVideo) }
+            if (scanError != null) ScanErrorCard(scanError, onRefresh)
+            if (videos.isEmpty() && scanError == null) {
+                EmptyLibraryCard(onRefresh)
+            } else if (videos.isNotEmpty()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(videos, key = { it.id }) { video ->
+                        VideoRow(video, thumbnailRepository, onOpenVideo)
+                    }
+                }
+            }
         }
     }
 }
@@ -281,6 +310,22 @@ private fun StatusCard(message: String) {
             .background(VeyraColors.surface.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
             .padding(20.dp),
     ) { Text(message, color = VeyraColors.muted) }
+}
+
+@Composable
+private fun ScanErrorCard(message: String, onRetry: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(VeyraColors.surface.copy(alpha = 0.75f), RoundedCornerShape(20.dp))
+            .padding(20.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Couldn't scan your videos", color = Color.White, fontWeight = FontWeight.SemiBold)
+            Text(message, color = VeyraColors.muted)
+            Button(onClick = onRetry) { Text("Try again") }
+        }
+    }
 }
 
 @Composable

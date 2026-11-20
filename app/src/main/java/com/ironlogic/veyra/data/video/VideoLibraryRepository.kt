@@ -20,13 +20,15 @@ class VideoLibraryRepository(
         )
 
         val items = mutableListOf<VideoItem>()
-        contentResolver.query(
+        val cursor = contentResolver.query(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
             projection,
             null,
             null,
             "${MediaStore.Video.Media.DATE_ADDED} DESC",
-        )?.use { cursor ->
+        ) ?: throw IllegalStateException("MediaStore returned no video cursor")
+
+        cursor.use {
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
             val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
             val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
