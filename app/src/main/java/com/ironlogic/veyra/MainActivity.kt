@@ -91,6 +91,7 @@ private fun VeyraHome() {
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
     var continueWatching by remember { mutableStateOf(progressStore.read()) }
+    val resumeContinueWatching = { continueWatching?.let { selectedVideo = it.asVideoItem() } }
 
     selectedVideo?.let { video ->
         VideoPlayerScreen(
@@ -151,9 +152,9 @@ private fun VeyraHome() {
     }
 
     if (isTabletLandscape) {
-        TabletLibraryShell(content, continueWatching)
+        TabletLibraryShell(content, continueWatching, resumeContinueWatching)
     } else {
-        PhoneLibraryShell(content, continueWatching)
+        PhoneLibraryShell(content, continueWatching, resumeContinueWatching)
     }
 }
 
@@ -161,6 +162,7 @@ private fun VeyraHome() {
 private fun PhoneLibraryShell(
     content: @Composable () -> Unit,
     progress: com.ironlogic.veyra.data.video.VideoProgress?,
+    onResumeContinueWatching: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -170,7 +172,11 @@ private fun PhoneLibraryShell(
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Header()
-        ContinueWatchingCard(progress = progress, modifier = Modifier.fillMaxWidth())
+        ContinueWatchingCard(
+            progress = progress,
+            modifier = Modifier.fillMaxWidth(),
+            onResume = onResumeContinueWatching,
+        )
         SectionTitle("Your library")
         content()
         Spacer(modifier = Modifier.weight(1f))
@@ -182,6 +188,7 @@ private fun PhoneLibraryShell(
 private fun TabletLibraryShell(
     content: @Composable () -> Unit,
     progress: com.ironlogic.veyra.data.video.VideoProgress?,
+    onResumeContinueWatching: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -204,7 +211,11 @@ private fun TabletLibraryShell(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Header()
-            ContinueWatchingCard(progress = progress, modifier = Modifier.fillMaxWidth())
+            ContinueWatchingCard(
+                progress = progress,
+                modifier = Modifier.fillMaxWidth(),
+                onResume = onResumeContinueWatching,
+            )
             SectionTitle("Your library")
             content()
         }
@@ -258,9 +269,11 @@ private fun Header() {
 private fun ContinueWatchingCard(
     progress: com.ironlogic.veyra.data.video.VideoProgress?,
     modifier: Modifier = Modifier,
+    onResume: () -> Unit,
 ) {
     Box(
         modifier = modifier
+            .clickable(enabled = progress != null, onClick = onResume)
             .height(150.dp)
             .background(VeyraColors.surface, RoundedCornerShape(24.dp))
             .padding(20.dp),
