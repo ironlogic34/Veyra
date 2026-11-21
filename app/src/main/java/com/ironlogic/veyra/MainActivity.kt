@@ -92,7 +92,10 @@ private fun VeyraHome() {
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
     var continueWatching by remember { mutableStateOf(progressStore.read()) }
-    val resumeContinueWatching = { continueWatching?.let { selectedVideo = it.asVideoItem() } }
+    val resumeContinueWatching: () -> Unit = {
+        val progress = continueWatching
+        if (progress != null) selectedVideo = progress.asVideoItem()
+    }
 
     selectedVideo?.let { video ->
         VideoPlayerScreen(
