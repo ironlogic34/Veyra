@@ -28,6 +28,7 @@ import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoResizeMode
+import com.ironlogic.veyra.data.video.VideoProgressWritePolicy
 import kotlinx.coroutines.delay
 
 @Composable
@@ -51,14 +52,20 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(exoPlayer, video.contentUri) {
+        var lastSavedPositionMs = exoPlayer.currentPosition
         while (true) {
             delay(1_000)
             if (exoPlayer.playbackState == Player.STATE_ENDED) {
                 progressStore.clear(video)
                 break
             }
-            val durationMs = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
-            progressStore.save(video, exoPlayer.currentPosition, durationMs)
+
+            val currentPositionMs = exoPlayer.currentPosition
+            if (VideoProgressWritePolicy.shouldPersist(currentPositionMs, lastSavedPositionMs)) {
+                val durationMs = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
+                progressStore.save(video, currentPositionMs, durationMs)
+                lastSavedPositionMs = currentPositionMs
+            }
         }
     }
 
