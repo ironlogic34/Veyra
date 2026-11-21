@@ -41,7 +41,7 @@ fun VideoPlayerScreen(
     var resizeMode by remember(video.contentUri) {
         mutableStateOf(settingsStore.readResizeMode())
     }
-    val player = remember(video.contentUri) {
+    val exoPlayer = remember(video.contentUri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(video.contentUri))
             seekTo(progressStore.read(video)?.positionMs ?: 0L)
@@ -50,27 +50,27 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(player, video.contentUri) {
+    LaunchedEffect(exoPlayer, video.contentUri) {
         while (true) {
             delay(1_000)
-            if (player.playbackState == Player.STATE_ENDED) {
+            if (exoPlayer.playbackState == Player.STATE_ENDED) {
                 progressStore.clear(video)
                 break
             }
-            val durationMs = player.duration.takeIf { it > 0L } ?: video.durationMs
-            progressStore.save(video, player.currentPosition, durationMs)
+            val durationMs = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
+            progressStore.save(video, exoPlayer.currentPosition, durationMs)
         }
     }
 
-    DisposableEffect(player) {
+    DisposableEffect(exoPlayer) {
         onDispose {
-            if (player.playbackState == Player.STATE_ENDED) {
+            if (exoPlayer.playbackState == Player.STATE_ENDED) {
                 progressStore.clear(video)
             } else {
-                val durationMs = player.duration.takeIf { it > 0L } ?: video.durationMs
-                progressStore.save(video, player.currentPosition, durationMs)
+                val durationMs = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
+                progressStore.save(video, exoPlayer.currentPosition, durationMs)
             }
-            player.release()
+            exoPlayer.release()
         }
     }
 
@@ -82,20 +82,20 @@ fun VideoPlayerScreen(
         AndroidView(
             factory = {
                 PlayerView(it).apply {
-                    player = this@VideoPlayerScreen.run { player }
+                    player = exoPlayer
                     this.resizeMode = resizeMode.toPlayerViewResizeMode()
                 }
             },
             update = { view ->
-                view.player = player
+                view.player = exoPlayer
                 view.resizeMode = resizeMode.toPlayerViewResizeMode()
             },
             modifier = Modifier.fillMaxSize(),
         )
         Button(
             onClick = {
-                val durationMs = player.duration.takeIf { it > 0L } ?: video.durationMs
-                progressStore.save(video, player.currentPosition, durationMs)
+                val durationMs = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
+                progressStore.save(video, exoPlayer.currentPosition, durationMs)
                 onBack()
             },
             modifier = Modifier

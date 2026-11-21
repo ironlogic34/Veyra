@@ -54,6 +54,7 @@ import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
 import com.ironlogic.veyra.data.video.VideoLibraryScanError
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
+import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoThumbnailRepository
 import com.ironlogic.veyra.ui.theme.VeyraTheme
 import com.ironlogic.veyra.ui.video.VideoPlayerScreen
@@ -80,6 +81,7 @@ private fun VeyraHome() {
     val repository = remember { VideoLibraryRepository(context.contentResolver) }
     val thumbnailRepository = remember { VideoThumbnailRepository(context.contentResolver) }
     val progressStore = remember { VideoPlaybackProgressStore(context) }
+    val playbackSettingsStore = remember { VideoPlaybackSettingsStore(context) }
     val permissionRequests = remember {
         VideoAccessPermission.requestedPermissions(Build.VERSION.SDK_INT)
     }
@@ -94,6 +96,7 @@ private fun VeyraHome() {
         VideoPlayerScreen(
             video = video,
             progressStore = progressStore,
+            settingsStore = playbackSettingsStore,
             onBack = {
                 continueWatching = progressStore.read()
                 selectedVideo = null
