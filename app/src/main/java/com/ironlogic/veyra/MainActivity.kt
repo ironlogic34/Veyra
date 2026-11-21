@@ -1,7 +1,9 @@
 package com.ironlogic.veyra
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
@@ -29,6 +31,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,6 +54,10 @@ import androidx.core.content.ContextCompat
 import com.ironlogic.veyra.data.video.VideoAccessPermission
 import com.ironlogic.veyra.data.video.VideoAccessState
 import com.ironlogic.veyra.data.video.VideoItem
+import com.ironlogic.veyra.data.video.VideoFolder
+import com.ironlogic.veyra.data.video.VideoFolderRepository
+import com.ironlogic.veyra.data.video.VideoFolderStore
+import com.ironlogic.veyra.data.video.VideoLibraryMergePolicy
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
 import com.ironlogic.veyra.data.video.VideoLibraryScanError
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
@@ -80,6 +87,8 @@ private fun VeyraHome() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { VideoLibraryRepository(context.contentResolver) }
+    val folderStore = remember { VideoFolderStore(context) }
+    val folderRepository = remember { VideoFolderRepository(context) }
     val thumbnailRepository = remember { VideoThumbnailRepository(context.contentResolver) }
     val progressStore = remember { VideoPlaybackProgressStore(context) }
     val playbackSettingsStore = remember { VideoPlaybackSettingsStore(context) }
@@ -90,6 +99,7 @@ private fun VeyraHome() {
     var isLoading by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
+    var selectedFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
     var continueWatching by remember { mutableStateOf(progressStore.read()) }
     val resumeContinueWatching: () -> Unit = {
@@ -117,13 +127,33 @@ private fun VeyraHome() {
             isLoading = true
             scanError = null
             try {
-                videos = repository.scan()
+                var localScanError: String? = null
+                val localVideos = if (videoAccess != VideoAccessState.NONE) {
+                    try {
+                        repository.scan()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (exception: Exception) {
+                        if (exception is SecurityException) {
+                            videoAccess = currentVideoAccess(context)
+                        }
+                        localScanError = VideoLibraryScanError.messageFor(exception)
+                        emptyList()
+                    }
+                } else {
+                    emptyList()
+                }
+
+                val folderResult = folderRepository.scan(folderStore.read())
+                selectedFolders = folderResult.folders
+                if (localScanError == null || folderResult.videos.isNotEmpty()) {
+                    videos = VideoLibraryMergePolicy.merge(localVideos, folderResult.videos)
+                }
+                val errors = listOfNotNull(localScanError) + folderResult.errors
+                scanError = errors.takeIf { it.isNotEmpty() }?.joinToString(" ")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (exception: Exception) {
-                if (exception is SecurityException) {
-                    videoAccess = currentVideoAccess(context)
-                }
                 scanError = VideoLibraryScanError.messageFor(exception)
             } finally {
                 isLoading = false
@@ -136,9 +166,25 @@ private fun VeyraHome() {
     ) {
         videoAccess = currentVideoAccess(context)
     }
+    val folderPickerLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                )
+                folderStore.add(uri)
+                refresh()
+            } catch (_: SecurityException) {
+                scanError = "Veyra couldn't keep access to that folder. Select it again and retry."
+            }
+        }
+    }
 
     LaunchedEffect(videoAccess) {
-        if (videoAccess != VideoAccessState.NONE) refresh()
+        refresh()
     }
 
     val isTabletLandscape = LocalConfiguration.current.screenWidthDp >= 600
@@ -148,9 +194,22 @@ private fun VeyraHome() {
             isLoading = isLoading,
             scanError = scanError,
             hasPermission = videoAccess != VideoAccessState.NONE,
+            folders = selectedFolders,
             thumbnailRepository = thumbnailRepository,
             onOpenVideo = { selectedVideo = it },
             onRequestPermission = { permissionLauncher.launch(permissionRequests) },
+            onAddFolder = { folderPickerLauncher.launch(null) },
+            onRemoveFolder = { folderUri ->
+                val uri = Uri.parse(folderUri)
+                folderStore.remove(uri)
+                runCatching {
+                    context.contentResolver.releasePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    )
+                }
+                refresh()
+            },
             onRefresh = ::refresh,
         )
     }
@@ -232,29 +291,89 @@ private fun LibraryContent(
     isLoading: Boolean,
     scanError: String?,
     hasPermission: Boolean,
+    folders: List<VideoFolder>,
     thumbnailRepository: VideoThumbnailRepository,
     onOpenVideo: (VideoItem) -> Unit,
     onRequestPermission: () -> Unit,
+    onAddFolder: () -> Unit,
+    onRemoveFolder: (String) -> Unit,
     onRefresh: () -> Unit,
 ) {
-    when {
-        !hasPermission -> PermissionCard(onRequestPermission)
-        isLoading -> StatusCard("Looking through your local videos…")
-        else -> Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (scanError != null) ScanErrorCard(scanError, onRefresh)
-            if (videos.isEmpty() && scanError == null) {
-                EmptyLibraryCard(onRefresh)
-            } else if (videos.isNotEmpty()) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    items(videos, key = { it.id }) { video ->
-                        VideoRow(video, thumbnailRepository, onOpenVideo)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        FolderAccessSection(folders, onAddFolder, onRemoveFolder)
+        when {
+            !hasPermission && folders.isEmpty() -> PermissionCard(onRequestPermission)
+            isLoading -> StatusCard("Looking through your local videos…")
+            else -> {
+                if (!hasPermission) {
+                    StatusCard("Device-wide access is off. Videos from selected folders are still available.")
+                } else if (scanError != null) {
+                    ScanErrorCard(scanError, onRefresh)
+                }
+                if (videos.isEmpty() && scanError == null) {
+                    EmptyLibraryCard(onRefresh)
+                } else if (videos.isNotEmpty()) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(videos, key = { it.id }) { video ->
+                            VideoRow(video, thumbnailRepository, onOpenVideo)
+                        }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FolderAccessSection(
+    folders: List<VideoFolder>,
+    onAddFolder: () -> Unit,
+    onRemoveFolder: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(VeyraColors.surface.copy(alpha = 0.72f), RoundedCornerShape(18.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Selected folders", color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text(
+                    "Include videos from folders you choose.",
+                    color = VeyraColors.muted,
+                    fontSize = 12.sp,
+                )
+            }
+            Button(onClick = onAddFolder) { Text("Add folder") }
+        }
+        folders.forEach { folder ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(folder.name, color = Color.White, maxLines = 1)
+                    Text(
+                        if (folder.accessible) "Available" else "Access lost",
+                        color = if (folder.accessible) VeyraColors.accent else VeyraColors.muted,
+                        fontSize = 11.sp,
+                    )
+                }
+                TextButton(onClick = { onRemoveFolder(folder.uri) }) {
+                    Text("Remove")
                 }
             }
         }
