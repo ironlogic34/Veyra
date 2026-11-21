@@ -56,6 +56,7 @@ import com.ironlogic.veyra.data.video.VideoLibraryScanError
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoThumbnailRepository
+import com.ironlogic.veyra.data.video.asVideoItem
 import com.ironlogic.veyra.ui.theme.VeyraTheme
 import com.ironlogic.veyra.ui.video.VideoPlayerScreen
 import kotlinx.coroutines.CancellationException
