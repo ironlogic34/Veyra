@@ -9,7 +9,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -19,18 +22,25 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
+import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
+import com.ironlogic.veyra.data.video.VideoResizeMode
 import kotlinx.coroutines.delay
 
 @Composable
 fun VideoPlayerScreen(
     video: VideoItem,
     progressStore: VideoPlaybackProgressStore,
+    settingsStore: VideoPlaybackSettingsStore,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    var resizeMode by remember(video.contentUri) {
+        mutableStateOf(settingsStore.readResizeMode())
+    }
     val player = remember(video.contentUri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(video.contentUri))
@@ -70,7 +80,16 @@ fun VideoPlayerScreen(
             .background(Color.Black),
     ) {
         AndroidView(
-            factory = { PlayerView(it).apply { this.player = player } },
+            factory = {
+                PlayerView(it).apply {
+                    player = this@VideoPlayerScreen.run { player }
+                    this.resizeMode = resizeMode.toPlayerViewResizeMode()
+                }
+            },
+            update = { view ->
+                view.player = player
+                view.resizeMode = resizeMode.toPlayerViewResizeMode()
+            },
             modifier = Modifier.fillMaxSize(),
         )
         Button(
@@ -85,5 +104,21 @@ fun VideoPlayerScreen(
         ) {
             Text("Back")
         }
+        Button(
+            onClick = {
+                resizeMode = resizeMode.next()
+                settingsStore.writeResizeMode(resizeMode)
+            },
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(16.dp),
+        ) {
+            Text("Aspect: ${resizeMode.label}")
+        }
     }
+}
+
+private fun VideoResizeMode.toPlayerViewResizeMode(): Int = when (this) {
+    VideoResizeMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+    VideoResizeMode.CROP -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
 }
