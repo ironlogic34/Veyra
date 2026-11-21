@@ -2,6 +2,7 @@ package com.ironlogic.veyra.data.video
 
 import android.content.ContentResolver
 import android.content.ContentUris
+import android.os.Build
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,9 +20,17 @@ class VideoLibraryRepository(
             MediaStore.Video.Media.DATE_ADDED,
         )
 
+        val collectionUri = if (
+            VideoMediaStoreVolumePolicy.usesAggregateExternalVolume(Build.VERSION.SDK_INT)
+        ) {
+            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+        }
+
         val items = mutableListOf<VideoItem>()
         val cursor = contentResolver.query(
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+            collectionUri,
             projection,
             null,
             null,
@@ -37,12 +46,10 @@ class VideoLibraryRepository(
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
+                val contentUri = ContentUris.withAppendedId(collectionUri, id).toString()
                 items += VideoItem(
-                    id = id.toString(),
-                    contentUri = ContentUris.withAppendedId(
-                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                        id,
-                    ).toString(),
+                    id = contentUri,
+                    contentUri = contentUri,
                     displayName = cursor.getString(nameColumn),
                     durationMs = cursor.getLong(durationColumn),
                     sizeBytes = cursor.getLong(sizeColumn),
