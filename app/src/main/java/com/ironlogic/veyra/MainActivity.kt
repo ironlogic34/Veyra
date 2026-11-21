@@ -55,6 +55,8 @@ import com.ironlogic.veyra.data.video.VideoAccessPermission
 import com.ironlogic.veyra.data.video.VideoAccessState
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoFolder
+import com.ironlogic.veyra.data.video.VideoHistoryEntry
+import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoFolderRepository
 import com.ironlogic.veyra.data.video.VideoFolderStore
 import com.ironlogic.veyra.data.video.VideoLibraryMergePolicy
@@ -64,6 +66,8 @@ import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoThumbnailRepository
 import com.ironlogic.veyra.data.video.asVideoItem
+import java.text.DateFormat
+import java.util.Date
 import com.ironlogic.veyra.ui.theme.VeyraTheme
 import com.ironlogic.veyra.ui.video.VideoPlayerScreen
 import kotlinx.coroutines.CancellationException
@@ -91,6 +95,7 @@ private fun VeyraHome() {
     val folderRepository = remember { VideoFolderRepository(context) }
     val thumbnailRepository = remember { VideoThumbnailRepository(context.contentResolver) }
     val progressStore = remember { VideoPlaybackProgressStore(context) }
+    val historyStore = remember { VideoPlaybackHistoryStore(context) }
     val playbackSettingsStore = remember { VideoPlaybackSettingsStore(context) }
     val permissionRequests = remember {
         VideoAccessPermission.requestedPermissions(Build.VERSION.SDK_INT)
@@ -102,6 +107,8 @@ private fun VeyraHome() {
     var selectedFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
     var continueWatching by remember { mutableStateOf(progressStore.read()) }
+    var history by remember { mutableStateOf(historyStore.read()) }
+    var destination by remember { mutableStateOf(VeyraDestination.LIBRARY) }
     val resumeContinueWatching: () -> Unit = {
         val progress = continueWatching
         if (progress != null) selectedVideo = progress.asVideoItem()
@@ -111,9 +118,11 @@ private fun VeyraHome() {
         VideoPlayerScreen(
             video = video,
             progressStore = progressStore,
+            historyStore = historyStore,
             settingsStore = playbackSettingsStore,
             onBack = {
                 continueWatching = progressStore.read()
+                history = historyStore.read()
                 selectedVideo = null
             },
         )
@@ -189,35 +198,62 @@ private fun VeyraHome() {
 
     val isTabletLandscape = LocalConfiguration.current.screenWidthDp >= 600
     val content: @Composable () -> Unit = {
-        LibraryContent(
-            videos = videos,
-            isLoading = isLoading,
-            scanError = scanError,
-            hasPermission = videoAccess != VideoAccessState.NONE,
-            folders = selectedFolders,
-            thumbnailRepository = thumbnailRepository,
-            onOpenVideo = { selectedVideo = it },
-            onRequestPermission = { permissionLauncher.launch(permissionRequests) },
-            onAddFolder = { folderPickerLauncher.launch(null) },
-            onRemoveFolder = { folderUri ->
-                val uri = Uri.parse(folderUri)
-                folderStore.remove(uri)
-                runCatching {
-                    context.contentResolver.releasePersistableUriPermission(
-                        uri,
-                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
-                    )
-                }
-                refresh()
-            },
-            onRefresh = ::refresh,
-        )
+        when (destination) {
+            VeyraDestination.LIBRARY -> LibraryContent(
+                videos = videos,
+                isLoading = isLoading,
+                scanError = scanError,
+                hasPermission = videoAccess != VideoAccessState.NONE,
+                folders = selectedFolders,
+                thumbnailRepository = thumbnailRepository,
+                onOpenVideo = { selectedVideo = it },
+                onRequestPermission = { permissionLauncher.launch(permissionRequests) },
+                onAddFolder = { folderPickerLauncher.launch(null) },
+                onRemoveFolder = { folderUri ->
+                    val uri = Uri.parse(folderUri)
+                    folderStore.remove(uri)
+                    runCatching {
+                        context.contentResolver.releasePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                        )
+                    }
+                    refresh()
+                },
+                onRefresh = ::refresh,
+            )
+            VeyraDestination.HISTORY -> HistoryContent(
+                entries = history,
+                onOpenVideo = { entry -> selectedVideo = entry.asVideoItem() },
+                onClearHistory = {
+                    historyStore.clear()
+                    history = emptyList()
+                },
+            )
+        }
     }
 
+    val sectionTitle = if (destination == VeyraDestination.HISTORY) "Playback history" else "Your library"
     if (isTabletLandscape) {
-        TabletLibraryShell(content, continueWatching, resumeContinueWatching)
+        TabletLibraryShell(
+            content,
+            continueWatching,
+            resumeContinueWatching,
+            showContinueWatching = destination == VeyraDestination.LIBRARY,
+            sectionTitle = sectionTitle,
+            selectedDestination = destination,
+            onDestinationSelected = { destination = it },
+        )
     } else {
-        PhoneLibraryShell(content, continueWatching, resumeContinueWatching)
+        PhoneLibraryShell(
+            content,
+            continueWatching,
+            resumeContinueWatching,
+            showContinueWatching = destination == VeyraDestination.LIBRARY,
+            sectionTitle = sectionTitle,
+            selectedDestination = destination,
+            onDestinationSelected = { destination = it },
+        )
     }
 }
 
@@ -226,6 +262,10 @@ private fun PhoneLibraryShell(
     content: @Composable () -> Unit,
     progress: com.ironlogic.veyra.data.video.VideoProgress?,
     onResumeContinueWatching: () -> Unit,
+    showContinueWatching: Boolean,
+    sectionTitle: String,
+    selectedDestination: VeyraDestination,
+    onDestinationSelected: (VeyraDestination) -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -235,15 +275,17 @@ private fun PhoneLibraryShell(
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Header()
-        ContinueWatchingCard(
-            progress = progress,
-            modifier = Modifier.fillMaxWidth(),
-            onResume = onResumeContinueWatching,
-        )
-        SectionTitle("Your library")
+        if (showContinueWatching) {
+            ContinueWatchingCard(
+                progress = progress,
+                modifier = Modifier.fillMaxWidth(),
+                onResume = onResumeContinueWatching,
+            )
+        }
+        SectionTitle(sectionTitle)
         content()
         Spacer(modifier = Modifier.weight(1f))
-        FloatingDock()
+        FloatingDock(selectedDestination, onDestinationSelected)
     }
 }
 
@@ -252,6 +294,10 @@ private fun TabletLibraryShell(
     content: @Composable () -> Unit,
     progress: com.ironlogic.veyra.data.video.VideoProgress?,
     onResumeContinueWatching: () -> Unit,
+    showContinueWatching: Boolean,
+    sectionTitle: String,
+    selectedDestination: VeyraDestination,
+    onDestinationSelected: (VeyraDestination) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -265,8 +311,17 @@ private fun TabletLibraryShell(
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             Text("VEYRA", color = VeyraColors.accent, fontSize = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = 4.sp)
-            Text("Library", color = Color.White, fontWeight = FontWeight.SemiBold)
-            Text("History", color = VeyraColors.muted)
+            Text(
+                "Library",
+                modifier = Modifier.clickable { onDestinationSelected(VeyraDestination.LIBRARY) },
+                color = if (selectedDestination == VeyraDestination.LIBRARY) Color.White else VeyraColors.muted,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                "History",
+                modifier = Modifier.clickable { onDestinationSelected(VeyraDestination.HISTORY) },
+                color = if (selectedDestination == VeyraDestination.HISTORY) VeyraColors.accent else VeyraColors.muted,
+            )
             Text("Settings", color = VeyraColors.muted)
         }
         Column(
@@ -274,12 +329,14 @@ private fun TabletLibraryShell(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Header()
-            ContinueWatchingCard(
-                progress = progress,
-                modifier = Modifier.fillMaxWidth(),
-                onResume = onResumeContinueWatching,
-            )
-            SectionTitle("Your library")
+            if (showContinueWatching) {
+                ContinueWatchingCard(
+                    progress = progress,
+                    modifier = Modifier.fillMaxWidth(),
+                    onResume = onResumeContinueWatching,
+                )
+            }
+            SectionTitle(sectionTitle)
             content()
         }
     }
@@ -374,6 +431,63 @@ private fun FolderAccessSection(
                 }
                 TextButton(onClick = { onRemoveFolder(folder.uri) }) {
                     Text("Remove")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoryContent(
+    entries: List<VideoHistoryEntry>,
+    onOpenVideo: (VideoHistoryEntry) -> Unit,
+    onClearHistory: () -> Unit,
+) {
+    if (entries.isEmpty()) {
+        StatusCard("Videos you play will appear here.")
+        return
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("Recently played", color = VeyraColors.muted, fontSize = 13.sp)
+            TextButton(onClick = onClearHistory) { Text("Clear history") }
+        }
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(entries, key = { it.contentUri }) { entry ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(VeyraColors.surface, RoundedCornerShape(16.dp))
+                        .clickable { onOpenVideo(entry) }
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(entry.displayName, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(
+                            "Last played " + formatHistoryDate(entry.lastPlayedEpochMs),
+                            color = VeyraColors.muted,
+                            fontSize = 12.sp,
+                        )
+                        Text(
+                            "Resume from " + formatDuration(entry.positionMs),
+                            color = VeyraColors.accent,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    TextButton(onClick = { onOpenVideo(entry) }) { Text("Open") }
                 }
             }
         }
@@ -532,7 +646,10 @@ private fun VideoThumbnail(video: VideoItem, repository: VideoThumbnailRepositor
 }
 
 @Composable
-private fun FloatingDock() {
+private fun FloatingDock(
+    selectedDestination: VeyraDestination,
+    onDestinationSelected: (VeyraDestination) -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -540,11 +657,28 @@ private fun FloatingDock() {
             .padding(horizontal = 20.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.SpaceAround,
     ) {
-        Text("Library", color = VeyraColors.accent, fontWeight = FontWeight.SemiBold)
-        Text("History", color = VeyraColors.muted)
+        Text(
+            "Library",
+            modifier = Modifier.clickable { onDestinationSelected(VeyraDestination.LIBRARY) },
+            color = if (selectedDestination == VeyraDestination.LIBRARY) VeyraColors.accent else VeyraColors.muted,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            "History",
+            modifier = Modifier.clickable { onDestinationSelected(VeyraDestination.HISTORY) },
+            color = if (selectedDestination == VeyraDestination.HISTORY) VeyraColors.accent else VeyraColors.muted,
+        )
         Text("Settings", color = VeyraColors.muted)
     }
 }
+
+private enum class VeyraDestination {
+    LIBRARY,
+    HISTORY,
+}
+
+private fun formatHistoryDate(epochMs: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(epochMs))
 
 private fun currentVideoAccess(context: Context): VideoAccessState {
     val grantedPermissions = VideoAccessPermission

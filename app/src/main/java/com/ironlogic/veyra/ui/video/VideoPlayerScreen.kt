@@ -26,6 +26,7 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
+import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoResizeMode
 import com.ironlogic.veyra.data.video.VideoProgressWritePolicy
@@ -35,6 +36,7 @@ import kotlinx.coroutines.delay
 fun VideoPlayerScreen(
     video: VideoItem,
     progressStore: VideoPlaybackProgressStore,
+    historyStore: VideoPlaybackHistoryStore,
     settingsStore: VideoPlaybackSettingsStore,
     onBack: () -> Unit,
 ) {
@@ -52,11 +54,14 @@ fun VideoPlayerScreen(
     }
 
     LaunchedEffect(exoPlayer, video.contentUri) {
+        val initialDurationMs = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
+        historyStore.record(video, exoPlayer.currentPosition, initialDurationMs)
         var lastSavedPositionMs = exoPlayer.currentPosition
         while (true) {
             delay(1_000)
             if (exoPlayer.playbackState == Player.STATE_ENDED) {
                 progressStore.clear(video)
+                historyStore.record(video, exoPlayer.currentPosition, video.durationMs)
                 break
             }
 
@@ -76,6 +81,7 @@ fun VideoPlayerScreen(
             } else {
                 val durationMs = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
                 progressStore.save(video, exoPlayer.currentPosition, durationMs)
+                historyStore.record(video, exoPlayer.currentPosition, durationMs)
             }
             exoPlayer.release()
         }
@@ -103,6 +109,7 @@ fun VideoPlayerScreen(
             onClick = {
                 val durationMs = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
                 progressStore.save(video, exoPlayer.currentPosition, durationMs)
+                historyStore.record(video, exoPlayer.currentPosition, durationMs)
                 onBack()
             },
             modifier = Modifier
