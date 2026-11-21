@@ -62,3 +62,12 @@ data class VideoProgress(
     val positionMs: Long,
     val durationMs: Long = 0L,
 )
+
+fun VideoProgress.asVideoItem(): VideoItem = VideoItem(
+    id = contentUri,
+    contentUri = contentUri,
+    displayName = displayName,
+    durationMs = durationMs,
+    sizeBytes = 0L,
+    addedEpochSeconds = 0L,
+)
