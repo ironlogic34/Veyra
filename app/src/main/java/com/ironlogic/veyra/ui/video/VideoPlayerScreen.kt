@@ -1,5 +1,7 @@
 package com.ironlogic.veyra.ui.video
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +30,7 @@ import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
+import com.ironlogic.veyra.data.video.VideoOrientationMode
 import com.ironlogic.veyra.data.video.VideoResizeMode
 import com.ironlogic.veyra.data.video.VideoProgressWritePolicy
 import kotlinx.coroutines.delay
@@ -44,6 +47,21 @@ fun VideoPlayerScreen(
     var resizeMode by remember(video.contentUri) {
         mutableStateOf(settingsStore.readResizeMode())
     }
+    val orientationMode = remember(video.contentUri) {
+        settingsStore.readOrientationMode()
+    }
+    val activity = context as? Activity
+    val originalRequestedOrientation = remember(activity) { activity?.requestedOrientation }
+
+    DisposableEffect(activity, orientationMode) {
+        activity?.requestedOrientation = orientationMode.toRequestedOrientation()
+        onDispose {
+            if (activity != null && originalRequestedOrientation != null) {
+                activity.requestedOrientation = originalRequestedOrientation
+            }
+        }
+    }
+
     val exoPlayer = remember(video.contentUri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(video.contentUri))
@@ -130,6 +148,12 @@ fun VideoPlayerScreen(
             Text("Aspect: ${resizeMode.label}")
         }
     }
+}
+
+private fun VideoOrientationMode.toRequestedOrientation(): Int = when (this) {
+    VideoOrientationMode.SYSTEM -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+    VideoOrientationMode.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    VideoOrientationMode.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
 }
 
 private fun VideoResizeMode.toPlayerViewResizeMode(): Int = when (this) {

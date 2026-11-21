@@ -12,8 +12,16 @@ class VideoPlaybackSettingsStore(context: Context) {
         preferences.edit().putString(KEY_RESIZE_MODE, mode.storageValue).apply()
     }
 
+    fun readOrientationMode(): VideoOrientationMode =
+        VideoOrientationMode.fromStorage(preferences.getString(KEY_ORIENTATION_MODE, null))
+
+    fun writeOrientationMode(mode: VideoOrientationMode) {
+        preferences.edit().putString(KEY_ORIENTATION_MODE, mode.storageValue).apply()
+    }
+
     private companion object {
         const val PREFERENCES = "veyra_video_playback_settings"
         const val KEY_RESIZE_MODE = "resize_mode"
+        const val KEY_ORIENTATION_MODE = "orientation_mode"
     }
 }

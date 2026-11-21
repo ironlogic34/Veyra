@@ -29,6 +29,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -64,6 +65,7 @@ import com.ironlogic.veyra.data.video.VideoLibraryRepository
 import com.ironlogic.veyra.data.video.VideoLibraryScanError
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
+import com.ironlogic.veyra.data.video.VideoOrientationMode
 import com.ironlogic.veyra.data.video.VideoThumbnailRepository
 import com.ironlogic.veyra.data.video.asVideoItem
 import java.text.DateFormat
@@ -230,10 +232,15 @@ private fun VeyraHome() {
                     history = emptyList()
                 },
             )
+            VeyraDestination.SETTINGS -> SettingsContent(playbackSettingsStore)
         }
     }
 
-    val sectionTitle = if (destination == VeyraDestination.HISTORY) "Playback history" else "Your library"
+    val sectionTitle = when (destination) {
+        VeyraDestination.LIBRARY -> "Your library"
+        VeyraDestination.HISTORY -> "Playback history"
+        VeyraDestination.SETTINGS -> "Video settings"
+    }
     if (isTabletLandscape) {
         TabletLibraryShell(
             content,
@@ -322,7 +329,11 @@ private fun TabletLibraryShell(
                 modifier = Modifier.clickable { onDestinationSelected(VeyraDestination.HISTORY) },
                 color = if (selectedDestination == VeyraDestination.HISTORY) VeyraColors.accent else VeyraColors.muted,
             )
-            Text("Settings", color = VeyraColors.muted)
+            Text(
+                "Settings",
+                modifier = Modifier.clickable { onDestinationSelected(VeyraDestination.SETTINGS) },
+                color = if (selectedDestination == VeyraDestination.SETTINGS) VeyraColors.accent else VeyraColors.muted,
+            )
         }
         Column(
             modifier = Modifier.weight(1f),
@@ -491,6 +502,83 @@ private fun HistoryContent(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SettingsContent(settingsStore: VideoPlaybackSettingsStore) {
+    var resizeMode by remember { mutableStateOf(settingsStore.readResizeMode()) }
+    var orientationMode by remember { mutableStateOf(settingsStore.readOrientationMode()) }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        PreferenceCard(
+            title = "Aspect ratio",
+            description = "Fit shows the complete frame. Crop fills the player without stretching.",
+        ) {
+            SettingChoice("Fit", resizeMode == com.ironlogic.veyra.data.video.VideoResizeMode.FIT) {
+                resizeMode = com.ironlogic.veyra.data.video.VideoResizeMode.FIT
+                settingsStore.writeResizeMode(resizeMode)
+            }
+            SettingChoice("Crop", resizeMode == com.ironlogic.veyra.data.video.VideoResizeMode.CROP) {
+                resizeMode = com.ironlogic.veyra.data.video.VideoResizeMode.CROP
+                settingsStore.writeResizeMode(resizeMode)
+            }
+        }
+        PreferenceCard(
+            title = "Playback orientation",
+            description = "Applied while a video is open. System default follows the device.",
+        ) {
+            VideoOrientationMode.values().forEach { mode ->
+                SettingChoice(mode.label, orientationMode == mode) {
+                    orientationMode = mode
+                    settingsStore.writeOrientationMode(mode)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreferenceCard(
+    title: String,
+    description: String,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(VeyraColors.surface, RoundedCornerShape(18.dp))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(title, color = Color.White, fontWeight = FontWeight.SemiBold)
+        Text(description, color = VeyraColors.muted, fontSize = 12.sp)
+        content()
+    }
+}
+
+@Composable
+private fun SettingChoice(
+    label: String,
+    selected: Boolean,
+    onSelect: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onSelect)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            modifier = Modifier.weight(1f),
+            color = if (selected) Color.White else VeyraColors.muted,
+        )
+        RadioButton(selected = selected, onClick = onSelect)
     }
 }
 
@@ -668,13 +756,18 @@ private fun FloatingDock(
             modifier = Modifier.clickable { onDestinationSelected(VeyraDestination.HISTORY) },
             color = if (selectedDestination == VeyraDestination.HISTORY) VeyraColors.accent else VeyraColors.muted,
         )
-        Text("Settings", color = VeyraColors.muted)
+        Text(
+            "Settings",
+            modifier = Modifier.clickable { onDestinationSelected(VeyraDestination.SETTINGS) },
+            color = if (selectedDestination == VeyraDestination.SETTINGS) VeyraColors.accent else VeyraColors.muted,
+        )
     }
 }
 
 private enum class VeyraDestination {
     LIBRARY,
     HISTORY,
+    SETTINGS,
 }
 
 private fun formatHistoryDate(epochMs: Long): String =
