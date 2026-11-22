@@ -23,7 +23,7 @@ class VideoThumbnailDiskCache(
             file.readBytes().also { file.setLastModified(System.currentTimeMillis()) }
         }.getOrNull()
 
-        if (bytes.isNullOrEmpty()) {
+        if (bytes == null || bytes.isEmpty()) {
             file.delete()
             null
         } else {
@@ -90,5 +90,5 @@ class VideoThumbnailDiskCache(
 
 object VideoThumbnailCacheKey {
     fun forVideo(video: VideoItem): String =
-        "${video.contentUri}\u0000${video.sizeBytes}\u0000${video.addedEpochSeconds}"
+        "${video.contentUri}\\u0000${video.sizeBytes}\\u0000${video.addedEpochSeconds}"
 }
