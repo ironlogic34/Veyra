@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -55,6 +56,7 @@ import com.ironlogic.veyra.data.video.VideoProgressWritePolicy
 import com.ironlogic.veyra.data.video.VideoSubtitleSelection
 import com.ironlogic.veyra.data.video.VideoSubtitleStore
 import com.ironlogic.veyra.data.video.VideoSubtitleTypePolicy
+import com.ironlogic.veyra.data.video.VideoSleepTimerPolicy
 import kotlinx.coroutines.delay
 
 @Composable
@@ -112,6 +114,9 @@ fun VideoPlayerScreen(
     var currentPositionMs by remember(video.contentUri) { mutableStateOf(0L) }
     var durationMs by remember(video.contentUri) { mutableStateOf(video.durationMs) }
     var seekPreviewMs by remember(video.contentUri) { mutableStateOf(0L) }
+    var sleepTimerDeadlineMs by remember(video.contentUri) { mutableStateOf<Long?>(null) }
+    var sleepTimerRemainingMs by remember(video.contentUri) { mutableStateOf(0L) }
+    var showSleepTimerDialog by remember(video.contentUri) { mutableStateOf(false) }
 
     fun saveAndExit() {
         val duration = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
@@ -172,6 +177,28 @@ fun VideoPlayerScreen(
         if (!isTabletLandscape && controlsVisible && isPlaying && !isSeeking) {
             delay(3_500)
             controlsVisible = false
+        }
+    }
+
+    LaunchedEffect(exoPlayer, sleepTimerDeadlineMs) {
+        val deadline = sleepTimerDeadlineMs
+        if (deadline == null) {
+            sleepTimerRemainingMs = 0L
+            return@LaunchedEffect
+        }
+        while (true) {
+            val remaining = VideoSleepTimerPolicy.remainingMs(
+                deadline,
+                SystemClock.elapsedRealtime(),
+            )
+            sleepTimerRemainingMs = remaining
+            if (remaining == 0L) {
+                exoPlayer.pause()
+                controlsVisible = true
+                sleepTimerDeadlineMs = null
+                break
+            }
+            delay(minOf(1_000L, remaining))
         }
     }
 
@@ -251,6 +278,9 @@ fun VideoPlayerScreen(
                 Button(onClick = { subtitlePicker.launch(arrayOf("text/*", "application/x-subrip", "application/octet-stream")) }) {
                     Text("Subtitles")
                 }
+                Button(onClick = { showSleepTimerDialog = true }) {
+                    Text(sleepTimerLabel(sleepTimerRemainingMs))
+                }
                 if (selectedSubtitle != null) {
                     Button(onClick = {
                         subtitleStore.clear(video.contentUri)
@@ -317,6 +347,9 @@ fun VideoPlayerScreen(
                             },
                         ) {
                             Text(selectedSubtitle?.displayName ?: "Subtitles")
+                        }
+                        TextButton(onClick = { showSleepTimerDialog = true }) {
+                            Text(sleepTimerLabel(sleepTimerRemainingMs))
                         }
                         if (selectedSubtitle != null) {
                             TextButton(
@@ -393,6 +426,51 @@ fun VideoPlayerScreen(
             }
         }
     }
+
+    if (showSleepTimerDialog) {
+        AlertDialog(
+            onDismissRequest = { showSleepTimerDialog = false },
+            title = { Text("Sleep timer") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    VideoSleepTimerPolicy.PRESET_MINUTES.forEach { minutes ->
+                        TextButton(
+                            onClick = {
+                                val duration = VideoSleepTimerPolicy.durationMs(minutes)
+                                if (duration != null) {
+                                    sleepTimerDeadlineMs = SystemClock.elapsedRealtime() + duration
+                                }
+                                showSleepTimerDialog = false
+                            },
+                        ) {
+                            Text("$minutes minutes")
+                        }
+                    }
+                    if (sleepTimerDeadlineMs != null) {
+                        TextButton(
+                            onClick = {
+                                sleepTimerDeadlineMs = null
+                                showSleepTimerDialog = false
+                            },
+                        ) {
+                            Text("Cancel timer")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showSleepTimerDialog = false }) {
+                    Text("Close")
+                }
+            },
+        )
+    }
+}
+
+private fun sleepTimerLabel(remainingMs: Long): String {
+    if (remainingMs <= 0L) return "Sleep timer"
+    val totalSeconds = (remainingMs + 999L) / 1_000L
+    return "Sleep ${totalSeconds / 60L}:${(totalSeconds % 60L).toString().padStart(2, '0')}"
 }
 
 private fun createMediaItem(
