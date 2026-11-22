@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Slider
@@ -221,7 +220,7 @@ fun VideoPlayerScreen(
                     player = exoPlayer
                     useController = isTabletLandscape
                     controllerAutoShow = true
-                    resizeMode = resizeMode.toPlayerViewResizeMode()
+                    this.resizeMode = resizeMode.toPlayerViewResizeMode()
                 }
             },
             update = { view ->
