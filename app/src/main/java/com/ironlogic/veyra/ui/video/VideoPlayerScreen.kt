@@ -64,6 +64,7 @@ import com.ironlogic.veyra.data.video.VideoRepeatMode
 import com.ironlogic.veyra.data.video.VideoProgressWritePolicy
 import com.ironlogic.veyra.data.video.VideoSubtitleSelection
 import com.ironlogic.veyra.data.video.VideoSubtitleStore
+import com.ironlogic.veyra.data.video.VideoSubtitlePermissionPolicy
 import com.ironlogic.veyra.data.video.VideoSubtitleTypePolicy
 import com.ironlogic.veyra.data.video.VideoSleepTimerPolicy
 import com.ironlogic.veyra.data.video.VideoPlaybackLockPolicy
@@ -183,9 +184,16 @@ fun VideoPlayerScreen(
                         uri,
                         Intent.FLAG_GRANT_READ_URI_PERMISSION,
                     )
+                    val previousSelection = selectedSubtitle
                     val selection = VideoSubtitleSelection(uri.toString(), displayName)
                     subtitleStore.write(video.contentUri, selection)
                     applySubtitle(selection)
+                    VideoSubtitlePermissionPolicy.uriToRelease(
+                        previousSelection?.uri,
+                        selection.uri,
+                    )?.let { oldUri ->
+                        releasePersistedSubtitleAccess(context, oldUri)
+                    }
                     subtitleMessage = "Loaded $displayName"
                 } catch (_: SecurityException) {
                     subtitleMessage = "Veyra couldn't keep access to that subtitle. Choose it again."
@@ -342,8 +350,10 @@ fun VideoPlayerScreen(
                 }
                 if (selectedSubtitle != null) {
                     Button(onClick = {
+                        val previousUri = selectedSubtitle?.uri
                         subtitleStore.clear(video.contentUri)
                         applySubtitle(null)
+                        releasePersistedSubtitleAccess(context, previousUri)
                         subtitleMessage = "Subtitles off"
                     }) { Text("Off") }
                 }
@@ -432,8 +442,10 @@ fun VideoPlayerScreen(
                         if (selectedSubtitle != null) {
                             TextButton(
                                 onClick = {
+                                    val previousUri = selectedSubtitle?.uri
                                     subtitleStore.clear(video.contentUri)
                                     applySubtitle(null)
+                                    releasePersistedSubtitleAccess(context, previousUri)
                                     subtitleMessage = "Subtitles off"
                                 },
                             ) { Text("Off") }
@@ -711,6 +723,16 @@ fun VideoPlayerScreen(
             dismissButton = {
                 TextButton(onClick = { showAddMemoryMarkDialog = false }) { Text("Cancel") }
             },
+        )
+    }
+}
+
+private fun releasePersistedSubtitleAccess(context: Context, uriString: String?) {
+    val uri = uriString?.takeIf { it.isNotBlank() }?.let(Uri::parse) ?: return
+    runCatching {
+        context.contentResolver.releasePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION,
         )
     }
 }
