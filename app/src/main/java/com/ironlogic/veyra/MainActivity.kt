@@ -122,12 +122,15 @@ private fun VeyraHome() {
         if (progress != null) selectedVideo = progress.asVideoItem()
     }
 
+    val isTabletLandscape = LocalConfiguration.current.screenWidthDp >= 600
+
     selectedVideo?.let { video ->
         VideoPlayerScreen(
             video = video,
             progressStore = progressStore,
             historyStore = historyStore,
             settingsStore = playbackSettingsStore,
+            isTabletLandscape = isTabletLandscape,
             onBack = {
                 continueWatching = progressStore.read()
                 history = historyStore.read()
@@ -204,7 +207,6 @@ private fun VeyraHome() {
         refresh()
     }
 
-    val isTabletLandscape = LocalConfiguration.current.screenWidthDp >= 600
     val content: @Composable () -> Unit = {
         when (destination) {
             VeyraDestination.LIBRARY -> LibraryContent(
