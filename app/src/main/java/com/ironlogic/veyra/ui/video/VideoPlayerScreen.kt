@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Slider
@@ -57,6 +58,8 @@ import com.ironlogic.veyra.data.video.VideoSubtitleSelection
 import com.ironlogic.veyra.data.video.VideoSubtitleStore
 import com.ironlogic.veyra.data.video.VideoSubtitleTypePolicy
 import com.ironlogic.veyra.data.video.VideoSleepTimerPolicy
+import com.ironlogic.veyra.data.video.VideoPlaybackLockPolicy
+import com.ironlogic.veyra.data.video.VideoLockGesture
 import kotlinx.coroutines.delay
 
 @Composable
@@ -117,6 +120,7 @@ fun VideoPlayerScreen(
     var sleepTimerDeadlineMs by remember(video.contentUri) { mutableStateOf<Long?>(null) }
     var sleepTimerRemainingMs by remember(video.contentUri) { mutableStateOf(0L) }
     var showSleepTimerDialog by remember(video.contentUri) { mutableStateOf(false) }
+    var controlsLocked by remember(video.contentUri) { mutableStateOf(false) }
 
     fun saveAndExit() {
         val duration = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
@@ -159,7 +163,14 @@ fun VideoPlayerScreen(
         }
     }
 
-    BackHandler(onBack = ::saveAndExit)
+    BackHandler {
+        if (controlsLocked) {
+            controlsLocked = false
+            controlsVisible = true
+        } else {
+            saveAndExit()
+        }
+    }
 
     LaunchedEffect(exoPlayer, isSeeking) {
         while (true) {
@@ -264,7 +275,7 @@ fun VideoPlayerScreen(
                 ),
         )
 
-        if (isTabletLandscape) {
+        if (isTabletLandscape && !controlsLocked) {
             Button(
                 onClick = ::saveAndExit,
                 modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
@@ -280,6 +291,12 @@ fun VideoPlayerScreen(
                 }
                 Button(onClick = { showSleepTimerDialog = true }) {
                     Text(sleepTimerLabel(sleepTimerRemainingMs))
+                }
+                Button(onClick = {
+                    controlsLocked = true
+                    controlsVisible = false
+                }) {
+                    Text("Lock")
                 }
                 if (selectedSubtitle != null) {
                     Button(onClick = {
@@ -304,7 +321,7 @@ fun VideoPlayerScreen(
                     color = Color.White,
                 )
             }
-        } else if (controlsVisible) {
+        } else if (controlsVisible && !controlsLocked) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -332,6 +349,14 @@ fun VideoPlayerScreen(
                         },
                     ) {
                         Text(resizeMode.label)
+                    }
+                    TextButton(
+                        onClick = {
+                            controlsLocked = true
+                            controlsVisible = false
+                        },
+                    ) {
+                        Text("Lock")
                     }
                 }
 
@@ -422,6 +447,42 @@ fun VideoPlayerScreen(
                             },
                         ) { Text("+10s") }
                     }
+                }
+            }
+        }
+
+        if (controlsLocked) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.12f))
+                    .pointerInput(controlsLocked) {
+                        detectTapGestures(
+                            onTap = {
+                                if (VideoPlaybackLockPolicy.shouldUnlock(VideoLockGesture.TAP)) {
+                                    controlsLocked = false
+                                    controlsVisible = true
+                                }
+                            },
+                            onLongPress = {
+                                if (VideoPlaybackLockPolicy.shouldUnlock(VideoLockGesture.LONG_PRESS)) {
+                                    controlsLocked = false
+                                    controlsVisible = true
+                                }
+                            },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.78f), RoundedCornerShape(18.dp))
+                        .padding(horizontal = 24.dp, vertical = 18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text("Controls locked", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text("Hold anywhere to unlock", color = Color.LightGray, fontSize = 12.sp)
                 }
             }
         }
