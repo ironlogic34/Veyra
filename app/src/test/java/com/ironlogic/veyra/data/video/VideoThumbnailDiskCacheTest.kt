@@ -48,6 +48,27 @@ class VideoThumbnailDiskCacheTest {
         assertTrue(directory.listFiles().isNullOrEmpty())
     }
 
+    @Test
+    fun `read removes an empty cached entry`() = withCache { cache, directory ->
+        cache.write("empty", byteArrayOf(1))
+        val entry = directory.listFiles()!!.single()
+        entry.writeBytes(byteArrayOf())
+
+        assertNull(cache.read("empty"))
+        assertTrue(!entry.exists())
+    }
+
+    @Test
+    fun `write is a no-op when the cache path is not a directory`() {
+        val file = Files.createTempFile("veyra-cache-file", ".tmp").toFile()
+        try {
+            VideoThumbnailDiskCache(file).write("key", byteArrayOf(1, 2, 3))
+            assertTrue(file.isFile)
+        } finally {
+            file.delete()
+        }
+    }
+
     private fun withCache(
         maxBytes: Long = VideoThumbnailDiskCache.DEFAULT_MAX_BYTES,
         block: (VideoThumbnailDiskCache, java.io.File) -> Unit,

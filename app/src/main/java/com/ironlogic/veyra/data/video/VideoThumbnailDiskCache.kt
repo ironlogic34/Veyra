@@ -2,6 +2,7 @@ package com.ironlogic.veyra.data.video
 
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.security.MessageDigest
 
 /** A bounded, local-only cache for already-generated thumbnail bytes. */
@@ -17,14 +18,14 @@ class VideoThumbnailDiskCache(
 
     fun read(key: String): ByteArray? = synchronized(lock) {
         val file = fileFor(key)
-        if (!file.isFile) return@synchronized null
+        if (!runCatching { file.isFile }.getOrDefault(false)) return@synchronized null
 
         val bytes = runCatching {
             file.readBytes().also { file.setLastModified(System.currentTimeMillis()) }
         }.getOrNull()
 
         if (bytes == null || bytes.isEmpty()) {
-            file.delete()
+            runCatching { file.delete() }
             null
         } else {
             bytes
@@ -33,11 +34,11 @@ class VideoThumbnailDiskCache(
 
     fun write(key: String, bytes: ByteArray) = synchronized(lock) {
         if (bytes.isEmpty() || bytes.size.toLong() > maxBytes) return@synchronized
-        if (!directory.exists() && !directory.mkdirs()) return@synchronized
 
         val destination = fileFor(key)
         val temporary = File(directory, "${destination.name}.tmp")
         try {
+            if (!directory.isDirectory && !directory.mkdirs()) return@synchronized
             FileOutputStream(temporary).use { output ->
                 output.write(bytes)
                 output.fd.sync()
@@ -47,18 +48,22 @@ class VideoThumbnailDiskCache(
                 if (!temporary.renameTo(destination)) return@synchronized
             }
             trimToSize()
+        } catch (_: IOException) {
+            // Thumbnail caching is optional; a storage failure must not break the library.
+        } catch (_: SecurityException) {
+            // Keep playback and library rendering available if cache access is denied.
         } finally {
-            temporary.delete()
+            runCatching { temporary.delete() }
         }
     }
 
     fun remove(key: String) = synchronized(lock) {
-        fileFor(key).delete()
+        runCatching { fileFor(key).delete() }
         Unit
     }
 
     fun clear() = synchronized(lock) {
-        directory.listFiles()?.forEach(File::delete)
+        runCatching { directory.listFiles()?.forEach(File::delete) }
         Unit
     }
 
