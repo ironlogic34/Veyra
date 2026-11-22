@@ -4,7 +4,10 @@ import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.util.ArrayDeque
 
@@ -29,7 +32,8 @@ class VideoFolderRepository(
         val videos = linkedMapOf<String, VideoItem>()
         val errors = mutableListOf<String>()
 
-        folderUris.distinct().forEach { rawUri ->
+        for (rawUri in folderUris.distinct()) {
+            currentCoroutineContext().ensureActive()
             val uri = Uri.parse(rawUri)
             val root = runCatching { DocumentFile.fromTreeUri(context, uri) }.getOrNull()
             val name = root?.name?.takeIf { it.isNotBlank() } ?: fallbackName(uri)
@@ -41,6 +45,8 @@ class VideoFolderRepository(
                 var accessible = true
                 try {
                     collectVideos(root, videos)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
                 } catch (_: SecurityException) {
                     accessible = false
                     errors += "Access to \"$name\" changed while scanning. Select it again to restore access."
@@ -54,7 +60,7 @@ class VideoFolderRepository(
         VideoFolderScanResult(folders, videos.values.toList(), errors)
     }
 
-    private fun collectVideos(
+    private suspend fun collectVideos(
         root: DocumentFile,
         videos: MutableMap<String, VideoItem>,
     ) {
@@ -63,10 +69,11 @@ class VideoFolderRepository(
         pending.add(root)
 
         while (pending.isNotEmpty()) {
+            currentCoroutineContext().ensureActive()
             val directory = pending.removeFirst()
             if (!visited.add(directory.uri.toString())) continue
 
-            directory.listFiles().forEach { child ->
+            for (child in directory.listFiles()) {
                 when {
                     child.isDirectory -> pending.add(child)
                     child.isFile && VideoFolderMediaTypePolicy.isVideo(child.type, child.name) -> {
@@ -88,6 +95,7 @@ class VideoFolderRepository(
                     }
                 }
             }
+            currentCoroutineContext().ensureActive()
         }
     }
 
@@ -99,6 +107,8 @@ class VideoFolderRepository(
                 ?.toLongOrNull()
                 ?.coerceAtLeast(0L)
                 ?: 0L
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: Exception) {
             0L
         } finally {
