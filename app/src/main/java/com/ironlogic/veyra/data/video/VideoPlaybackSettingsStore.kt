@@ -19,9 +19,17 @@ class VideoPlaybackSettingsStore(context: Context) {
         preferences.edit().putString(KEY_ORIENTATION_MODE, mode.storageValue).apply()
     }
 
+    fun readAutoResumeEnabled(): Boolean =
+        preferences.getBoolean(KEY_AUTO_RESUME_ENABLED, true)
+
+    fun writeAutoResumeEnabled(enabled: Boolean) {
+        preferences.edit().putBoolean(KEY_AUTO_RESUME_ENABLED, enabled).apply()
+    }
+
     private companion object {
         const val PREFERENCES = "veyra_video_playback_settings"
         const val KEY_RESIZE_MODE = "resize_mode"
         const val KEY_ORIENTATION_MODE = "orientation_mode"
+        const val KEY_AUTO_RESUME_ENABLED = "auto_resume_enabled"
     }
 }

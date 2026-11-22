@@ -31,6 +31,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -585,6 +586,7 @@ private fun HistoryContent(
 private fun SettingsContent(settingsStore: VideoPlaybackSettingsStore) {
     var resizeMode by remember { mutableStateOf(settingsStore.readResizeMode()) }
     var orientationMode by remember { mutableStateOf(settingsStore.readOrientationMode()) }
+    var autoResumeEnabled by remember { mutableStateOf(settingsStore.readAutoResumeEnabled()) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -612,6 +614,28 @@ private fun SettingsContent(settingsStore: VideoPlaybackSettingsStore) {
                     orientationMode = mode
                     settingsStore.writeOrientationMode(mode)
                 }
+            }
+        }
+        PreferenceCard(
+            title = "Resume automatically",
+            description = "Start from your last position. The Continue Watching card still lets you resume manually when this is off.",
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    if (autoResumeEnabled) "Enabled" else "Disabled",
+                    color = if (autoResumeEnabled) Color.White else VeyraColors.muted,
+                )
+                Switch(
+                    checked = autoResumeEnabled,
+                    onCheckedChange = { enabled ->
+                        autoResumeEnabled = enabled
+                        settingsStore.writeAutoResumeEnabled(enabled)
+                    },
+                )
             }
         }
     }

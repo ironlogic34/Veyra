@@ -55,6 +55,7 @@ import androidx.media3.ui.PlayerView
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoMemoryMarkStore
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
+import com.ironlogic.veyra.data.video.VideoAutoResumePolicy
 import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoOrientationMode
@@ -114,7 +115,13 @@ fun VideoPlayerScreen(
     val exoPlayer = remember(video.contentUri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(createMediaItem(video, initialSubtitle))
-            seekTo(initialPositionMs ?: progressStore.read(video)?.positionMs ?: 0L)
+            seekTo(
+                VideoAutoResumePolicy.startPositionMs(
+                    autoResumeEnabled = settingsStore.readAutoResumeEnabled(),
+                    manualPositionMs = initialPositionMs,
+                    savedPositionMs = progressStore.read(video)?.positionMs,
+                ),
+            )
             prepare()
             playWhenReady = true
         }
