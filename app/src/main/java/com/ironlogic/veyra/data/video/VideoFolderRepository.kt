@@ -74,6 +74,7 @@ class VideoFolderRepository(
             if (!visited.add(directory.uri.toString())) continue
 
             for (child in directory.listFiles()) {
+                currentCoroutineContext().ensureActive()
                 when {
                     child.isDirectory -> pending.add(child)
                     child.isFile && VideoFolderMediaTypePolicy.isVideo(child.type, child.name) -> {
