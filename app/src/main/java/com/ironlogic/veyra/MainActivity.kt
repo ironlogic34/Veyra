@@ -70,6 +70,7 @@ import com.ironlogic.veyra.data.video.VideoThumbnailRepository
 import com.ironlogic.veyra.data.video.asVideoItem
 import java.text.DateFormat
 import java.util.Date
+import java.io.File
 import com.ironlogic.veyra.ui.theme.VeyraTheme
 import com.ironlogic.veyra.ui.video.VideoPlayerScreen
 import kotlinx.coroutines.CancellationException
@@ -95,7 +96,12 @@ private fun VeyraHome() {
     val repository = remember { VideoLibraryRepository(context.contentResolver) }
     val folderStore = remember { VideoFolderStore(context) }
     val folderRepository = remember { VideoFolderRepository(context) }
-    val thumbnailRepository = remember { VideoThumbnailRepository(context.contentResolver) }
+    val thumbnailRepository = remember {
+        VideoThumbnailRepository(
+            context.contentResolver,
+            File(context.cacheDir, "video-thumbnails"),
+        )
+    }
     val progressStore = remember { VideoPlaybackProgressStore(context) }
     val historyStore = remember { VideoPlaybackHistoryStore(context) }
     val playbackSettingsStore = remember { VideoPlaybackSettingsStore(context) }
