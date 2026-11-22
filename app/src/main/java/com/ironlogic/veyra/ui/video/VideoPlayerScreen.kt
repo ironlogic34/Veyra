@@ -1,8 +1,14 @@
 package com.ironlogic.veyra.ui.video
 
 import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -12,9 +18,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.weight
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -47,6 +53,9 @@ import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoOrientationMode
 import com.ironlogic.veyra.data.video.VideoResizeMode
 import com.ironlogic.veyra.data.video.VideoProgressWritePolicy
+import com.ironlogic.veyra.data.video.VideoSubtitleSelection
+import com.ironlogic.veyra.data.video.VideoSubtitleStore
+import com.ironlogic.veyra.data.video.VideoSubtitleTypePolicy
 import kotlinx.coroutines.delay
 
 @Composable
@@ -56,6 +65,7 @@ fun VideoPlayerScreen(
     historyStore: VideoPlaybackHistoryStore,
     settingsStore: VideoPlaybackSettingsStore,
     isTabletLandscape: Boolean,
+    subtitleStore: VideoSubtitleStore,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -65,6 +75,18 @@ fun VideoPlayerScreen(
     val orientationMode = remember(video.contentUri) {
         settingsStore.readOrientationMode()
     }
+    val initialSubtitle = remember(video.contentUri) {
+        subtitleStore.read(video.contentUri)?.takeIf { selection ->
+            context.contentResolver.persistedUriPermissions.any { permission ->
+                permission.uri.toString() == selection.uri && permission.isReadPermission
+            }
+        } ?: run {
+            subtitleStore.clear(video.contentUri)
+            null
+        }
+    }
+    var selectedSubtitle by remember(video.contentUri) { mutableStateOf(initialSubtitle) }
+    var subtitleMessage by remember(video.contentUri) { mutableStateOf<String?>(null) }
     val activity = context as? Activity
     val originalRequestedOrientation = remember(activity) { activity?.requestedOrientation }
 
@@ -79,7 +101,7 @@ fun VideoPlayerScreen(
 
     val exoPlayer = remember(video.contentUri) {
         ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(video.contentUri))
+            setMediaItem(createMediaItem(video, initialSubtitle))
             seekTo(progressStore.read(video)?.positionMs ?: 0L)
             prepare()
             playWhenReady = true
@@ -97,6 +119,40 @@ fun VideoPlayerScreen(
         progressStore.save(video, exoPlayer.currentPosition, duration)
         historyStore.record(video, exoPlayer.currentPosition, duration)
         onBack()
+    }
+
+    fun applySubtitle(selection: VideoSubtitleSelection?) {
+        val wasReadyToPlay = exoPlayer.playWhenReady
+        val position = exoPlayer.currentPosition
+        exoPlayer.setMediaItem(createMediaItem(video, selection), position)
+        exoPlayer.prepare()
+        exoPlayer.playWhenReady = wasReadyToPlay
+        selectedSubtitle = selection
+    }
+
+    val subtitlePicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            val displayName = querySubtitleDisplayName(context, uri)
+            val mimeType = VideoSubtitleTypePolicy.mimeTypeFor(displayName)
+            if (mimeType == null) {
+                subtitleMessage = "Choose an .srt or .vtt subtitle file."
+            } else {
+                try {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION,
+                    )
+                    val selection = VideoSubtitleSelection(uri.toString(), displayName)
+                    subtitleStore.write(video.contentUri, selection)
+                    applySubtitle(selection)
+                    subtitleMessage = "Loaded $displayName"
+                } catch (_: SecurityException) {
+                    subtitleMessage = "Veyra couldn't keep access to that subtitle. Choose it again."
+                }
+            }
+        }
     }
 
     BackHandler(onBack = ::saveAndExit)
@@ -165,7 +221,7 @@ fun VideoPlayerScreen(
                     player = exoPlayer
                     useController = isTabletLandscape
                     controllerAutoShow = true
-                    this.resizeMode = resizeMode.toPlayerViewResizeMode()
+                    resizeMode = resizeMode.toPlayerViewResizeMode()
                 }
             },
             update = { view ->
@@ -189,14 +245,35 @@ fun VideoPlayerScreen(
             ) {
                 Text("Back")
             }
-            Button(
-                onClick = {
-                    resizeMode = resizeMode.next()
-                    settingsStore.writeResizeMode(resizeMode)
-                },
+            Row(
                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Aspect: ${resizeMode.label}")
+                Button(onClick = { subtitlePicker.launch(arrayOf("text/*", "application/x-subrip", "application/octet-stream")) }) {
+                    Text("Subtitles")
+                }
+                if (selectedSubtitle != null) {
+                    Button(onClick = {
+                        subtitleStore.clear(video.contentUri)
+                        applySubtitle(null)
+                        subtitleMessage = "Subtitles off"
+                    }) { Text("Off") }
+                }
+                Button(
+                    onClick = {
+                        resizeMode = resizeMode.next()
+                        settingsStore.writeResizeMode(resizeMode)
+                    },
+                ) {
+                    Text("Aspect: ${resizeMode.label}")
+                }
+            }
+            subtitleMessage?.let {
+                Text(
+                    it,
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                    color = Color.White,
+                )
             }
         } else if (controlsVisible) {
             Column(
@@ -230,6 +307,32 @@ fun VideoPlayerScreen(
                 }
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = {
+                                subtitlePicker.launch(arrayOf("text/*", "application/x-subrip", "application/octet-stream"))
+                            },
+                        ) {
+                            Text(selectedSubtitle?.displayName ?: "Subtitles")
+                        }
+                        if (selectedSubtitle != null) {
+                            TextButton(
+                                onClick = {
+                                    subtitleStore.clear(video.contentUri)
+                                    applySubtitle(null)
+                                    subtitleMessage = "Subtitles off"
+                                },
+                            ) { Text("Off") }
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                    subtitleMessage?.let {
+                        Text(it, color = Color.White, fontSize = 12.sp)
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -291,6 +394,40 @@ fun VideoPlayerScreen(
             }
         }
     }
+}
+
+private fun createMediaItem(
+    video: VideoItem,
+    subtitle: VideoSubtitleSelection?,
+): MediaItem {
+    val builder = MediaItem.Builder().setUri(video.contentUri)
+    val mimeType = subtitle?.let { VideoSubtitleTypePolicy.mimeTypeFor(it.displayName) }
+    if (subtitle != null && mimeType != null) {
+        val configuration = MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.uri))
+            .setMimeType(mimeType)
+            .setLanguage("und")
+            .build()
+        builder.setSubtitleConfigurations(listOf(configuration))
+    }
+    return builder.build()
+}
+
+private fun querySubtitleDisplayName(context: Context, uri: Uri): String {
+    val queriedName = runCatching {
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (cursor.moveToFirst() && column >= 0) cursor.getString(column) else null
+        }
+    }.getOrNull()
+    return queriedName?.takeIf { it.isNotBlank() }
+        ?: uri.lastPathSegment?.substringAfterLast('/')?.substringAfterLast(':')?.takeIf { it.isNotBlank() }
+        ?: "subtitle"
 }
 
 private fun formatPlaybackTime(positionMs: Long): String {
