@@ -384,7 +384,8 @@ private fun LibraryContent(
             else -> {
                 if (!hasPermission) {
                     StatusCard("Device-wide access is off. Videos from selected folders are still available.")
-                } else if (scanError != null) {
+                }
+                if (scanError != null) {
                     ScanErrorCard(scanError, onRefresh)
                 }
                 if (videos.isEmpty() && scanError == null) {
