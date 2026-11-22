@@ -70,6 +70,7 @@ import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoSubtitleStore
 import com.ironlogic.veyra.data.video.VideoOrientationMode
+import com.ironlogic.veyra.data.video.VideoRepeatMode
 import com.ironlogic.veyra.data.video.VideoThumbnailRepository
 import com.ironlogic.veyra.data.video.asVideoItem
 import java.text.DateFormat
@@ -587,6 +588,7 @@ private fun SettingsContent(settingsStore: VideoPlaybackSettingsStore) {
     var resizeMode by remember { mutableStateOf(settingsStore.readResizeMode()) }
     var orientationMode by remember { mutableStateOf(settingsStore.readOrientationMode()) }
     var autoResumeEnabled by remember { mutableStateOf(settingsStore.readAutoResumeEnabled()) }
+    var repeatMode by remember { mutableStateOf(settingsStore.readRepeatMode()) }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -636,6 +638,19 @@ private fun SettingsContent(settingsStore: VideoPlaybackSettingsStore) {
                         settingsStore.writeAutoResumeEnabled(enabled)
                     },
                 )
+            }
+        }
+        PreferenceCard(
+            title = "Repeat current video",
+            description = "Repeat the open video continuously or stop at the end.",
+        ) {
+            SettingChoice("Off", repeatMode == VideoRepeatMode.OFF) {
+                repeatMode = VideoRepeatMode.OFF
+                settingsStore.writeRepeatMode(repeatMode)
+            }
+            SettingChoice("One", repeatMode == VideoRepeatMode.ONE) {
+                repeatMode = VideoRepeatMode.ONE
+                settingsStore.writeRepeatMode(repeatMode)
             }
         }
     }

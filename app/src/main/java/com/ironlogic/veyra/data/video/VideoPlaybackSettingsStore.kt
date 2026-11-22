@@ -26,10 +26,18 @@ class VideoPlaybackSettingsStore(context: Context) {
         preferences.edit().putBoolean(KEY_AUTO_RESUME_ENABLED, enabled).apply()
     }
 
+    fun readRepeatMode(): VideoRepeatMode =
+        VideoRepeatMode.fromStorage(preferences.getString(KEY_REPEAT_MODE, null))
+
+    fun writeRepeatMode(mode: VideoRepeatMode) {
+        preferences.edit().putString(KEY_REPEAT_MODE, mode.storageValue).apply()
+    }
+
     private companion object {
         const val PREFERENCES = "veyra_video_playback_settings"
         const val KEY_RESIZE_MODE = "resize_mode"
         const val KEY_ORIENTATION_MODE = "orientation_mode"
         const val KEY_AUTO_RESUME_ENABLED = "auto_resume_enabled"
+        const val KEY_REPEAT_MODE = "repeat_mode"
     }
 }

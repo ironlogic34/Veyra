@@ -60,6 +60,7 @@ import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoOrientationMode
 import com.ironlogic.veyra.data.video.VideoResizeMode
+import com.ironlogic.veyra.data.video.VideoRepeatMode
 import com.ironlogic.veyra.data.video.VideoProgressWritePolicy
 import com.ironlogic.veyra.data.video.VideoSubtitleSelection
 import com.ironlogic.veyra.data.video.VideoSubtitleStore
@@ -84,6 +85,9 @@ fun VideoPlayerScreen(
     val context = LocalContext.current
     var resizeMode by remember(video.contentUri) {
         mutableStateOf(settingsStore.readResizeMode())
+    }
+    var repeatMode by remember(video.contentUri) {
+        mutableStateOf(settingsStore.readRepeatMode())
     }
     val orientationMode = remember(video.contentUri) {
         settingsStore.readOrientationMode()
@@ -126,6 +130,10 @@ fun VideoPlayerScreen(
             playWhenReady = true
         }
     }
+    LaunchedEffect(exoPlayer, repeatMode) {
+        exoPlayer.repeatMode = repeatMode.toPlayerRepeatMode()
+    }
+
     var controlsVisible by remember(video.contentUri) { mutableStateOf(true) }
     var isPlaying by remember(video.contentUri) { mutableStateOf(true) }
     var isSeeking by remember(video.contentUri) { mutableStateOf(false) }
@@ -318,6 +326,14 @@ fun VideoPlayerScreen(
                 Button(onClick = { showMemoryMarksDialog = true }) {
                     Text("Marks (${memoryMarks.size})")
                 }
+                Button(
+                    onClick = {
+                        repeatMode = repeatMode.next()
+                        settingsStore.writeRepeatMode(repeatMode)
+                    },
+                ) {
+                    Text("Repeat: ${repeatMode.label}")
+                }
                 Button(onClick = {
                     controlsLocked = true
                     controlsVisible = false
@@ -375,6 +391,14 @@ fun VideoPlayerScreen(
                         },
                     ) {
                         Text(resizeMode.label)
+                    }
+                    TextButton(
+                        onClick = {
+                            repeatMode = repeatMode.next()
+                            settingsStore.writeRepeatMode(repeatMode)
+                        },
+                    ) {
+                        Text("Repeat: ${repeatMode.label}")
                     }
                     TextButton(
                         onClick = {
@@ -741,6 +765,11 @@ private fun formatPlaybackTime(positionMs: Long): String {
     } else {
         "%d:%02d".format(totalSeconds / 60L, seconds)
     }
+}
+
+private fun VideoRepeatMode.toPlayerRepeatMode(): Int = when (this) {
+    VideoRepeatMode.OFF -> Player.REPEAT_MODE_OFF
+    VideoRepeatMode.ONE -> Player.REPEAT_MODE_ONE
 }
 
 private fun VideoOrientationMode.toRequestedOrientation(): Int = when (this) {
