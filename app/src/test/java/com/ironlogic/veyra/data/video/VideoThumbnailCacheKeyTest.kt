@@ -16,7 +16,7 @@ class VideoThumbnailCacheKeyTest {
     }
 
     @Test
-    fun `file size and added time invalidate stale thumbnail keys`() {
+    fun `file size added time and modified time invalidate stale thumbnail keys`() {
         val original = video(sizeBytes = 100L, added = 10L)
 
         assertNotEquals(
@@ -27,14 +27,19 @@ class VideoThumbnailCacheKeyTest {
             VideoThumbnailCacheKey.forVideo(original),
             VideoThumbnailCacheKey.forVideo(original.copy(addedEpochSeconds = 11L)),
         )
+        assertNotEquals(
+            VideoThumbnailCacheKey.forVideo(original),
+            VideoThumbnailCacheKey.forVideo(original.copy(modifiedEpochSeconds = 12L)),
+        )
     }
 
-    private fun video(sizeBytes: Long, added: Long) = VideoItem(
+    private fun video(sizeBytes: Long, added: Long, modified: Long = 0L) = VideoItem(
         id = "content://video/1",
         contentUri = "content://video/1",
         displayName = "Video",
         durationMs = 60_000L,
         sizeBytes = sizeBytes,
         addedEpochSeconds = added,
+        modifiedEpochSeconds = modified,
     )
 }

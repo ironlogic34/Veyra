@@ -18,6 +18,7 @@ class VideoLibraryRepository(
             MediaStore.Video.Media.DURATION,
             MediaStore.Video.Media.SIZE,
             MediaStore.Video.Media.DATE_ADDED,
+            MediaStore.Video.Media.DATE_MODIFIED,
         )
 
         val collectionUri = if (
@@ -43,6 +44,7 @@ class VideoLibraryRepository(
             val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
             val addedColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+            val modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
@@ -54,6 +56,7 @@ class VideoLibraryRepository(
                     durationMs = cursor.getLong(durationColumn),
                     sizeBytes = cursor.getLong(sizeColumn),
                     addedEpochSeconds = cursor.getLong(addedColumn),
+                    modifiedEpochSeconds = cursor.getLong(modifiedColumn),
                 )
             }
         }
@@ -68,4 +71,5 @@ data class VideoItem(
     val durationMs: Long,
     val sizeBytes: Long,
     val addedEpochSeconds: Long,
+    val modifiedEpochSeconds: Long = 0L,
 )

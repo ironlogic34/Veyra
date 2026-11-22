@@ -90,5 +90,5 @@ class VideoThumbnailDiskCache(
 
 object VideoThumbnailCacheKey {
     fun forVideo(video: VideoItem): String =
-        "${video.contentUri}\\u0000${video.sizeBytes}\\u0000${video.addedEpochSeconds}"
+        "${video.contentUri}\\u0000${video.sizeBytes}\\u0000${video.addedEpochSeconds}\\u0000${video.modifiedEpochSeconds}"
 }

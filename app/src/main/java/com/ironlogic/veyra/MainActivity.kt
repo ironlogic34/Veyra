@@ -717,7 +717,7 @@ private fun VideoRow(
 
 @Composable
 private fun VideoThumbnail(video: VideoItem, repository: VideoThumbnailRepository) {
-    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = video.contentUri) {
+    val bitmap by produceState<Bitmap?>(initialValue = null, key1 = video) {
         value = repository.load(video)
     }
 

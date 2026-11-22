@@ -74,13 +74,15 @@ class VideoFolderRepository(
                         val uriString = uri.toString()
                         if (uriString !in videos) {
                             val name = child.name?.takeIf { it.isNotBlank() } ?: "Untitled video"
+                            val modifiedEpochSeconds = (child.lastModified() / 1_000L).coerceAtLeast(0L)
                             videos[uriString] = VideoItem(
                                 id = uriString,
                                 contentUri = uriString,
                                 displayName = name,
                                 durationMs = readDuration(uri),
                                 sizeBytes = child.length().coerceAtLeast(0L),
-                                addedEpochSeconds = (child.lastModified() / 1_000L).coerceAtLeast(0L),
+                                addedEpochSeconds = modifiedEpochSeconds,
+                                modifiedEpochSeconds = modifiedEpochSeconds,
                             )
                         }
                     }
