@@ -57,6 +57,8 @@ import com.ironlogic.veyra.data.video.VideoAccessState
 import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoFolder
 import com.ironlogic.veyra.data.video.VideoHistoryEntry
+import com.ironlogic.veyra.data.video.VideoMemoryMark
+import com.ironlogic.veyra.data.video.VideoMemoryMarkStore
 import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoFolderRepository
 import com.ironlogic.veyra.data.video.VideoFolderStore
@@ -105,6 +107,7 @@ private fun VeyraHome() {
     }
     val progressStore = remember { VideoPlaybackProgressStore(context) }
     val historyStore = remember { VideoPlaybackHistoryStore(context) }
+    val memoryMarkStore = remember { VideoMemoryMarkStore(context) }
     val playbackSettingsStore = remember { VideoPlaybackSettingsStore(context) }
     val subtitleStore = remember { VideoSubtitleStore(context) }
     val permissionRequests = remember {
@@ -116,12 +119,17 @@ private fun VeyraHome() {
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var selectedFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
+    var selectedVideoStartPositionMs by remember { mutableStateOf<Long?>(null) }
     var continueWatching by remember { mutableStateOf(progressStore.read()) }
     var history by remember { mutableStateOf(historyStore.read()) }
+    var memoryMarks by remember { mutableStateOf(memoryMarkStore.readAll()) }
     var destination by remember { mutableStateOf(VeyraDestination.LIBRARY) }
     val resumeContinueWatching: () -> Unit = {
         val progress = continueWatching
-        if (progress != null) selectedVideo = progress.asVideoItem()
+        if (progress != null) {
+            selectedVideoStartPositionMs = progress.positionMs
+            selectedVideo = progress.asVideoItem()
+        }
     }
 
     val isTabletLandscape = LocalConfiguration.current.screenWidthDp >= 600
@@ -134,9 +142,13 @@ private fun VeyraHome() {
             settingsStore = playbackSettingsStore,
             isTabletLandscape = isTabletLandscape,
             subtitleStore = subtitleStore,
+            memoryMarkStore = memoryMarkStore,
+            initialPositionMs = selectedVideoStartPositionMs,
             onBack = {
                 continueWatching = progressStore.read()
                 history = historyStore.read()
+                memoryMarks = memoryMarkStore.readAll()
+                selectedVideoStartPositionMs = null
                 selectedVideo = null
             },
         )
@@ -219,7 +231,10 @@ private fun VeyraHome() {
                 hasPermission = videoAccess != VideoAccessState.NONE,
                 folders = selectedFolders,
                 thumbnailRepository = thumbnailRepository,
-                onOpenVideo = { selectedVideo = it },
+                onOpenVideo = {
+                    selectedVideoStartPositionMs = null
+                    selectedVideo = it
+                },
                 onRequestPermission = { permissionLauncher.launch(permissionRequests) },
                 onAddFolder = { folderPickerLauncher.launch(null) },
                 onRemoveFolder = { folderUri ->
@@ -237,7 +252,19 @@ private fun VeyraHome() {
             )
             VeyraDestination.HISTORY -> HistoryContent(
                 entries = history,
-                onOpenVideo = { entry -> selectedVideo = entry.asVideoItem() },
+                marks = memoryMarks,
+                onOpenVideo = { entry ->
+                    selectedVideoStartPositionMs = null
+                    selectedVideo = entry.asVideoItem()
+                },
+                onOpenMark = { mark ->
+                    selectedVideoStartPositionMs = mark.positionMs
+                    selectedVideo = mark.asVideoItem()
+                },
+                onRemoveMark = { mark ->
+                    memoryMarkStore.remove(mark.id)
+                    memoryMarks = memoryMarkStore.readAll()
+                },
                 onClearHistory = {
                     historyStore.clear()
                     history = emptyList()
@@ -463,31 +490,33 @@ private fun FolderAccessSection(
 @Composable
 private fun HistoryContent(
     entries: List<VideoHistoryEntry>,
+    marks: List<VideoMemoryMark>,
     onOpenVideo: (VideoHistoryEntry) -> Unit,
+    onOpenMark: (VideoMemoryMark) -> Unit,
+    onRemoveMark: (VideoMemoryMark) -> Unit,
     onClearHistory: () -> Unit,
 ) {
-    if (entries.isEmpty()) {
-        StatusCard("Videos you play will appear here.")
+    if (entries.isEmpty() && marks.isEmpty()) {
+        StatusCard("Videos you play and moments you save will appear here.")
         return
     }
 
-    Column(
+    LazyColumn(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text("Recently played", color = VeyraColors.muted, fontSize = 13.sp)
-            TextButton(onClick = onClearHistory) { Text("Clear history") }
-        }
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            items(entries, key = { it.contentUri }) { entry ->
+        if (entries.isNotEmpty()) {
+            item(key = "history-heading") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("Recently played", color = VeyraColors.muted, fontSize = 13.sp)
+                    TextButton(onClick = onClearHistory) { Text("Clear history") }
+                }
+            }
+            items(entries, key = { "history-${it.contentUri}" }) { entry ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -511,6 +540,41 @@ private fun HistoryContent(
                         )
                     }
                     TextButton(onClick = { onOpenVideo(entry) }) { Text("Open") }
+                }
+            }
+        }
+
+        if (marks.isNotEmpty()) {
+            item(key = "memory-marks-heading") {
+                SectionTitle("Memory Marks")
+            }
+            items(marks, key = { "mark-${it.id}" }) { mark ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(VeyraColors.surface, RoundedCornerShape(16.dp))
+                        .clickable { onOpenMark(mark) }
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(mark.displayName, color = Color.White, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text("At ${formatDuration(mark.positionMs)}", color = VeyraColors.accent, fontSize = 12.sp)
+                        mark.note.takeIf { it.isNotBlank() }?.let {
+                            Text(it, color = VeyraColors.muted, fontSize = 12.sp, maxLines = 2)
+                        }
+                        mark.mood?.let {
+                            Text(it, color = VeyraColors.muted, fontSize = 11.sp)
+                        }
+                    }
+                    Column(horizontalAlignment = Alignment.End) {
+                        TextButton(onClick = { onOpenMark(mark) }) { Text("Jump") }
+                        TextButton(onClick = { onRemoveMark(mark) }) { Text("Remove") }
+                    }
                 }
             }
         }

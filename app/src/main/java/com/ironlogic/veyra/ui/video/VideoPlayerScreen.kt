@@ -19,13 +19,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +53,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.ironlogic.veyra.data.video.VideoItem
+import com.ironlogic.veyra.data.video.VideoMemoryMarkStore
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
@@ -70,6 +76,8 @@ fun VideoPlayerScreen(
     settingsStore: VideoPlaybackSettingsStore,
     isTabletLandscape: Boolean,
     subtitleStore: VideoSubtitleStore,
+    memoryMarkStore: VideoMemoryMarkStore,
+    initialPositionMs: Long? = null,
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -106,7 +114,7 @@ fun VideoPlayerScreen(
     val exoPlayer = remember(video.contentUri) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(createMediaItem(video, initialSubtitle))
-            seekTo(progressStore.read(video)?.positionMs ?: 0L)
+            seekTo(initialPositionMs ?: progressStore.read(video)?.positionMs ?: 0L)
             prepare()
             playWhenReady = true
         }
@@ -121,6 +129,14 @@ fun VideoPlayerScreen(
     var sleepTimerRemainingMs by remember(video.contentUri) { mutableStateOf(0L) }
     var showSleepTimerDialog by remember(video.contentUri) { mutableStateOf(false) }
     var controlsLocked by remember(video.contentUri) { mutableStateOf(false) }
+    var memoryMarks by remember(video.contentUri) {
+        mutableStateOf(memoryMarkStore.readForVideo(video.contentUri))
+    }
+    var showMemoryMarksDialog by remember(video.contentUri) { mutableStateOf(false) }
+    var showAddMemoryMarkDialog by remember(video.contentUri) { mutableStateOf(false) }
+    var memoryMarkNote by remember(video.contentUri) { mutableStateOf("") }
+    var memoryMarkMood by remember(video.contentUri) { mutableStateOf<String?>(null) }
+    var customMemoryMarkMood by remember(video.contentUri) { mutableStateOf("") }
 
     fun saveAndExit() {
         val duration = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
@@ -292,6 +308,9 @@ fun VideoPlayerScreen(
                 Button(onClick = { showSleepTimerDialog = true }) {
                     Text(sleepTimerLabel(sleepTimerRemainingMs))
                 }
+                Button(onClick = { showMemoryMarksDialog = true }) {
+                    Text("Marks (${memoryMarks.size})")
+                }
                 Button(onClick = {
                     controlsLocked = true
                     controlsVisible = false
@@ -375,6 +394,9 @@ fun VideoPlayerScreen(
                         }
                         TextButton(onClick = { showSleepTimerDialog = true }) {
                             Text(sleepTimerLabel(sleepTimerRemainingMs))
+                        }
+                        TextButton(onClick = { showMemoryMarksDialog = true }) {
+                            Text("Marks (${memoryMarks.size})")
                         }
                         if (selectedSubtitle != null) {
                             TextButton(
@@ -523,6 +545,140 @@ fun VideoPlayerScreen(
                 TextButton(onClick = { showSleepTimerDialog = false }) {
                     Text("Close")
                 }
+            },
+        )
+    }
+
+    if (showMemoryMarksDialog) {
+        AlertDialog(
+            onDismissRequest = { showMemoryMarksDialog = false },
+            title = { Text("Memory Marks") },
+            text = {
+                if (memoryMarks.isEmpty()) {
+                    Text("Save a moment from this video and it will stay here.")
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(memoryMarks, key = { it.id }) { mark ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(formatPlaybackTime(mark.positionMs), fontWeight = FontWeight.SemiBold)
+                                    if (mark.note.isNotBlank()) Text(mark.note, fontSize = 12.sp)
+                                    mark.mood?.let { Text(it, fontSize = 11.sp) }
+                                }
+                                TextButton(
+                                    onClick = {
+                                        exoPlayer.seekTo(mark.positionMs)
+                                        currentPositionMs = mark.positionMs
+                                        seekPreviewMs = mark.positionMs
+                                        controlsVisible = true
+                                        showMemoryMarksDialog = false
+                                    },
+                                ) { Text("Jump") }
+                                TextButton(
+                                    onClick = {
+                                        memoryMarkStore.remove(mark.id)
+                                        memoryMarks = memoryMarkStore.readForVideo(video.contentUri)
+                                    },
+                                ) { Text("Remove") }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showMemoryMarksDialog = false }) { Text("Close") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        memoryMarkNote = ""
+                        memoryMarkMood = null
+                        customMemoryMarkMood = ""
+                        showMemoryMarksDialog = false
+                        showAddMemoryMarkDialog = true
+                    },
+                ) { Text("Add mark") }
+            },
+        )
+    }
+
+    if (showAddMemoryMarkDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddMemoryMarkDialog = false },
+            title = { Text("Save this moment") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("At ${formatPlaybackTime(exoPlayer.currentPosition)}")
+                    TextField(
+                        value = memoryMarkNote,
+                        onValueChange = { memoryMarkNote = it },
+                        label = { Text("Note (optional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        maxLines = 3,
+                    )
+                    Text("Mood (optional)", fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("Calm", "Funny", "Intense").forEach { mood ->
+                            FilterChip(
+                                selected = memoryMarkMood == mood,
+                                onClick = { memoryMarkMood = if (memoryMarkMood == mood) null else mood },
+                                label = { Text(mood) },
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("Beautiful", "Important", "Custom").forEach { mood ->
+                            FilterChip(
+                                selected = memoryMarkMood == mood,
+                                onClick = { memoryMarkMood = if (memoryMarkMood == mood) null else mood },
+                                label = { Text(mood) },
+                            )
+                        }
+                    }
+                    if (memoryMarkMood == "Custom") {
+                        TextField(
+                            value = customMemoryMarkMood,
+                            onValueChange = { customMemoryMarkMood = it },
+                            label = { Text("Custom mood") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val mood = if (memoryMarkMood == "Custom") {
+                            customMemoryMarkMood.trim().takeIf { it.isNotEmpty() }
+                        } else {
+                            memoryMarkMood
+                        }
+                        memoryMarkStore.add(
+                            video = video,
+                            positionMs = exoPlayer.currentPosition,
+                            note = memoryMarkNote,
+                            mood = mood,
+                        )
+                        memoryMarks = memoryMarkStore.readForVideo(video.contentUri)
+                        showAddMemoryMarkDialog = false
+                        subtitleMessage = "Memory mark saved"
+                        controlsVisible = true
+                    },
+                ) { Text("Save mark") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddMemoryMarkDialog = false }) { Text("Cancel") }
             },
         )
     }
