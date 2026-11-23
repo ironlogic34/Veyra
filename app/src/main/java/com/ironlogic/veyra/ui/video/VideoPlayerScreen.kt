@@ -2,6 +2,7 @@ package com.ironlogic.veyra.ui.video
 
 import android.app.Activity
 import android.content.Context
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
@@ -43,13 +44,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import com.ironlogic.veyra.playback.VeyraPlaybackService
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.ironlogic.veyra.data.video.VideoItem
@@ -73,6 +78,74 @@ import kotlinx.coroutines.delay
 
 @Composable
 fun VideoPlayerScreen(
+    video: VideoItem,
+    progressStore: VideoPlaybackProgressStore,
+    historyStore: VideoPlaybackHistoryStore,
+    settingsStore: VideoPlaybackSettingsStore,
+    isTabletLandscape: Boolean,
+    subtitleStore: VideoSubtitleStore,
+    memoryMarkStore: VideoMemoryMarkStore,
+    initialPositionMs: Long? = null,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    var controller by remember { mutableStateOf<MediaController?>(null) }
+
+    DisposableEffect(context) {
+        val token = SessionToken(
+            context,
+            ComponentName(context, VeyraPlaybackService::class.java),
+        )
+        val future = MediaController.Builder(context, token).buildAsync()
+        future.addListener(
+            {
+                controller = runCatching { future.get() }.getOrNull()
+            },
+            ContextCompat.getMainExecutor(context),
+        )
+        onDispose {
+            MediaController.releaseFuture(future)
+            controller = null
+        }
+    }
+
+    val connectedController = controller
+    if (connectedController == null) {
+        Box(
+            modifier = Modifier.fillMaxSize().background(Color.Black),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("Connecting to Veyra player…", color = Color.White)
+        }
+    } else {
+        ConnectedVideoPlayerScreen(
+            video = video,
+            player = connectedController,
+            progressStore = progressStore,
+            historyStore = historyStore,
+            settingsStore = settingsStore,
+            isTabletLandscape = isTabletLandscape,
+            subtitleStore = subtitleStore,
+            memoryMarkStore = memoryMarkStore,
+            initialPositionMs = initialPositionMs,
+            onBack = onBack,
+        )
+    }
+}
+
+@Composable
+private fun ConnectedVideoPlayerScreen(
+    video: VideoItem,
+    player: MediaController,
+    progressStore: VideoPlaybackProgressStore,
+    historyStore: VideoPlaybackHistoryStore,
+    settingsStore: VideoPlaybackSettingsStore,
+    isTabletLandscape: Boolean,
+    subtitleStore: VideoSubtitleStore,
+    memoryMarkStore: VideoMemoryMarkStore,
+    initialPositionMs: Long? = null,
+    onBack: () -> Unit,
+) {
     video: VideoItem,
     progressStore: VideoPlaybackProgressStore,
     historyStore: VideoPlaybackHistoryStore,
@@ -117,22 +190,24 @@ fun VideoPlayerScreen(
         }
     }
 
-    val exoPlayer = remember(video.contentUri) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(createMediaItem(video, initialSubtitle))
-            seekTo(
+    LaunchedEffect(player, video.contentUri, initialSubtitle, initialPositionMs) {
+        if (player.currentMediaItem?.mediaId != video.contentUri) {
+            player.setMediaItem(createMediaItem(video, initialSubtitle))
+            player.seekTo(
                 VideoAutoResumePolicy.startPositionMs(
                     autoResumeEnabled = settingsStore.readAutoResumeEnabled(),
                     manualPositionMs = initialPositionMs,
                     savedPositionMs = progressStore.read(video)?.positionMs,
                 ),
             )
-            prepare()
-            playWhenReady = true
+            player.prepare()
+            player.playWhenReady = true
+        } else if (initialPositionMs != null) {
+            player.seekTo(initialPositionMs.coerceAtLeast(0L))
         }
     }
-    LaunchedEffect(exoPlayer, repeatMode) {
-        exoPlayer.repeatMode = repeatMode.toPlayerRepeatMode()
+    LaunchedEffect(player, repeatMode) {
+        player.repeatMode = repeatMode.toPlayerRepeatMode()
     }
 
     var controlsVisible by remember(video.contentUri) { mutableStateOf(true) }
@@ -155,18 +230,18 @@ fun VideoPlayerScreen(
     var customMemoryMarkMood by remember(video.contentUri) { mutableStateOf("") }
 
     fun saveAndExit() {
-        val duration = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
-        progressStore.save(video, exoPlayer.currentPosition, duration)
-        historyStore.record(video, exoPlayer.currentPosition, duration)
+        val duration = player.duration.takeIf { it > 0L } ?: video.durationMs
+        progressStore.save(video, player.currentPosition, duration)
+        historyStore.record(video, player.currentPosition, duration)
         onBack()
     }
 
     fun applySubtitle(selection: VideoSubtitleSelection?) {
-        val wasReadyToPlay = exoPlayer.playWhenReady
-        val position = exoPlayer.currentPosition
-        exoPlayer.setMediaItem(createMediaItem(video, selection), position)
-        exoPlayer.prepare()
-        exoPlayer.playWhenReady = wasReadyToPlay
+        val wasReadyToPlay = player.playWhenReady
+        val position = player.currentPosition
+        player.setMediaItem(createMediaItem(video, selection), position)
+        player.prepare()
+        player.playWhenReady = wasReadyToPlay
         selectedSubtitle = selection
     }
 
@@ -211,12 +286,12 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(exoPlayer, isSeeking) {
+    LaunchedEffect(player, isSeeking) {
         while (true) {
-            durationMs = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
-            isPlaying = exoPlayer.isPlaying
+            durationMs = player.duration.takeIf { it > 0L } ?: video.durationMs
+            isPlaying = player.isPlaying
             if (!isSeeking) {
-                currentPositionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+                currentPositionMs = player.currentPosition.coerceAtLeast(0L)
                 seekPreviewMs = currentPositionMs
             }
             delay(250)
@@ -230,7 +305,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(exoPlayer, sleepTimerDeadlineMs) {
+    LaunchedEffect(player, sleepTimerDeadlineMs) {
         val deadline = sleepTimerDeadlineMs
         if (deadline == null) {
             sleepTimerRemainingMs = 0L
@@ -243,7 +318,7 @@ fun VideoPlayerScreen(
             )
             sleepTimerRemainingMs = remaining
             if (remaining == 0L) {
-                exoPlayer.pause()
+                player.pause()
                 controlsVisible = true
                 sleepTimerDeadlineMs = null
                 break
@@ -252,37 +327,36 @@ fun VideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(exoPlayer, video.contentUri) {
-        val initialDurationMs = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
-        historyStore.record(video, exoPlayer.currentPosition, initialDurationMs)
-        var lastSavedPositionMs = exoPlayer.currentPosition
+    LaunchedEffect(player, video.contentUri) {
+        val initialDurationMs = player.duration.takeIf { it > 0L } ?: video.durationMs
+        historyStore.record(video, player.currentPosition, initialDurationMs)
+        var lastSavedPositionMs = player.currentPosition
         while (true) {
             delay(1_000)
-            if (exoPlayer.playbackState == Player.STATE_ENDED) {
+            if (player.playbackState == Player.STATE_ENDED) {
                 progressStore.clear(video)
-                historyStore.record(video, exoPlayer.currentPosition, video.durationMs)
+                historyStore.record(video, player.currentPosition, video.durationMs)
                 break
             }
 
-            val current = exoPlayer.currentPosition
+            val current = player.currentPosition
             if (VideoProgressWritePolicy.shouldPersist(current, lastSavedPositionMs)) {
-                val currentDurationMs = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
+                val currentDurationMs = player.duration.takeIf { it > 0L } ?: video.durationMs
                 progressStore.save(video, current, currentDurationMs)
                 lastSavedPositionMs = current
             }
         }
     }
 
-    DisposableEffect(exoPlayer) {
+    DisposableEffect(player) {
         onDispose {
-            if (exoPlayer.playbackState == Player.STATE_ENDED) {
+            if (player.playbackState == Player.STATE_ENDED) {
                 progressStore.clear(video)
             } else {
-                val duration = exoPlayer.duration.takeIf { it > 0L } ?: video.durationMs
-                progressStore.save(video, exoPlayer.currentPosition, duration)
-                historyStore.record(video, exoPlayer.currentPosition, duration)
+                val duration = player.duration.takeIf { it > 0L } ?: video.durationMs
+                progressStore.save(video, player.currentPosition, duration)
+                historyStore.record(video, player.currentPosition, duration)
             }
-            exoPlayer.release()
         }
     }
 
@@ -294,14 +368,14 @@ fun VideoPlayerScreen(
         AndroidView(
             factory = {
                 PlayerView(it).apply {
-                    player = exoPlayer
+                    player = player
                     useController = isTabletLandscape
                     controllerAutoShow = true
                     this.resizeMode = resizeMode.toPlayerViewResizeMode()
                 }
             },
             update = { view ->
-                view.player = exoPlayer
+                view.player = player
                 view.useController = isTabletLandscape
                 view.resizeMode = resizeMode.toPlayerViewResizeMode()
             },
@@ -473,7 +547,7 @@ fun VideoPlayerScreen(
                             seekPreviewMs = (fraction * durationMs).toLong().coerceIn(0L, durationMs.coerceAtLeast(0L))
                         },
                         onValueChangeFinished = {
-                            exoPlayer.seekTo(seekPreviewMs)
+                            player.seekTo(seekPreviewMs)
                             currentPositionMs = seekPreviewMs
                             isSeeking = false
                         },
@@ -485,14 +559,14 @@ fun VideoPlayerScreen(
                     ) {
                         TextButton(
                             onClick = {
-                                exoPlayer.seekTo((exoPlayer.currentPosition - 10_000L).coerceAtLeast(0L))
+                                player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L))
                                 controlsVisible = true
                             },
                         ) { Text("−10s") }
                         Spacer(modifier = Modifier.weight(1f))
                         TextButton(
                             onClick = {
-                                if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                if (player.isPlaying) player.pause() else player.play()
                                 controlsVisible = true
                             },
                         ) {
@@ -506,8 +580,8 @@ fun VideoPlayerScreen(
                         Spacer(modifier = Modifier.weight(1f))
                         TextButton(
                             onClick = {
-                                val target = (exoPlayer.currentPosition + 10_000L).coerceAtMost(durationMs)
-                                exoPlayer.seekTo(target)
+                                val target = (player.currentPosition + 10_000L).coerceAtMost(durationMs)
+                                player.seekTo(target)
                                 controlsVisible = true
                             },
                         ) { Text("+10s") }
@@ -620,7 +694,7 @@ fun VideoPlayerScreen(
                                 }
                                 TextButton(
                                     onClick = {
-                                        exoPlayer.seekTo(mark.positionMs)
+                                        player.seekTo(mark.positionMs)
                                         currentPositionMs = mark.positionMs
                                         seekPreviewMs = mark.positionMs
                                         controlsVisible = true
@@ -661,7 +735,7 @@ fun VideoPlayerScreen(
             title = { Text("Save this moment") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("At ${formatPlaybackTime(exoPlayer.currentPosition)}")
+                    Text("At ${formatPlaybackTime(player.currentPosition)}")
                     TextField(
                         value = memoryMarkNote,
                         onValueChange = { memoryMarkNote = it },
@@ -709,7 +783,7 @@ fun VideoPlayerScreen(
                         }
                         memoryMarkStore.add(
                             video = video,
-                            positionMs = exoPlayer.currentPosition,
+                            positionMs = player.currentPosition,
                             note = memoryMarkNote,
                             mood = mood,
                         )
@@ -747,7 +821,10 @@ private fun createMediaItem(
     video: VideoItem,
     subtitle: VideoSubtitleSelection?,
 ): MediaItem {
-    val builder = MediaItem.Builder().setUri(video.contentUri)
+    val builder = MediaItem.Builder()
+        .setMediaId(video.contentUri)
+        .setUri(video.contentUri)
+        .setMediaMetadata(MediaMetadata.Builder().setTitle(video.displayName).build())
     val mimeType = subtitle?.let { VideoSubtitleTypePolicy.mimeTypeFor(it.displayName) }
     if (subtitle != null && mimeType != null) {
         val configuration = MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.uri))
