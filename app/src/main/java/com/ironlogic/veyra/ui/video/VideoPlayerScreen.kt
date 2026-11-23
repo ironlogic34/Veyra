@@ -66,7 +66,6 @@ import com.ironlogic.veyra.data.video.VideoPlaybackSettingsStore
 import com.ironlogic.veyra.data.video.VideoOrientationMode
 import com.ironlogic.veyra.data.video.VideoResizeMode
 import com.ironlogic.veyra.data.video.VideoRepeatMode
-import com.ironlogic.veyra.data.video.VideoProgressWritePolicy
 import com.ironlogic.veyra.data.video.VideoSubtitleSelection
 import com.ironlogic.veyra.data.video.VideoSubtitleStore
 import com.ironlogic.veyra.data.video.VideoSubtitlePermissionPolicy
@@ -314,27 +313,6 @@ private fun ConnectedVideoPlayerScreen(
                 break
             }
             delay(minOf(1_000L, remaining))
-        }
-    }
-
-    LaunchedEffect(player, video.contentUri) {
-        val initialDurationMs = player.duration.takeIf { it > 0L } ?: video.durationMs
-        historyStore.record(video, player.currentPosition, initialDurationMs)
-        var lastSavedPositionMs = player.currentPosition
-        while (true) {
-            delay(1_000)
-            if (player.playbackState == Player.STATE_ENDED) {
-                progressStore.clear(video)
-                historyStore.record(video, player.currentPosition, video.durationMs)
-                break
-            }
-
-            val current = player.currentPosition
-            if (VideoProgressWritePolicy.shouldPersist(current, lastSavedPositionMs)) {
-                val currentDurationMs = player.duration.takeIf { it > 0L } ?: video.durationMs
-                progressStore.save(video, current, currentDurationMs)
-                lastSavedPositionMs = current
-            }
         }
     }
 
