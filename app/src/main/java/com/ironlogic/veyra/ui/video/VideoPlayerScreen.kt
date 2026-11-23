@@ -358,7 +358,7 @@ private fun ConnectedVideoPlayerScreen(
         AndroidView(
             factory = {
                 PlayerView(it).apply {
-                    player = player
+                    this.player = player
                     useController = isTabletLandscape
                     controllerAutoShow = true
                     this.resizeMode = resizeMode.toPlayerViewResizeMode()
