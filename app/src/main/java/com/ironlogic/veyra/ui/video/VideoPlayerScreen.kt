@@ -146,16 +146,6 @@ private fun ConnectedVideoPlayerScreen(
     initialPositionMs: Long? = null,
     onBack: () -> Unit,
 ) {
-    video: VideoItem,
-    progressStore: VideoPlaybackProgressStore,
-    historyStore: VideoPlaybackHistoryStore,
-    settingsStore: VideoPlaybackSettingsStore,
-    isTabletLandscape: Boolean,
-    subtitleStore: VideoSubtitleStore,
-    memoryMarkStore: VideoMemoryMarkStore,
-    initialPositionMs: Long? = null,
-    onBack: () -> Unit,
-) {
     val context = LocalContext.current
     var resizeMode by remember(video.contentUri) {
         mutableStateOf(settingsStore.readResizeMode())
