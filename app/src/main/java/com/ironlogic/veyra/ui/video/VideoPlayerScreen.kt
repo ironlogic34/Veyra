@@ -6,7 +6,6 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.net.Uri
-import android.os.SystemClock
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -46,10 +45,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.ironlogic.veyra.playback.VeyraPlaybackService
+import com.ironlogic.veyra.playback.VideoSleepTimerStore
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.session.MediaController
@@ -89,8 +90,13 @@ fun VideoPlayerScreen(
 ) {
     val context = LocalContext.current
     var controller by remember { mutableStateOf<MediaController?>(null) }
+    var connectionFailed by remember { mutableStateOf(false) }
+    var connectionAttempt by remember { mutableStateOf(0) }
 
-    DisposableEffect(context) {
+    DisposableEffect(context, connectionAttempt) {
+        var disposed = false
+        controller = null
+        connectionFailed = false
         val token = SessionToken(
             context,
             ComponentName(context, VeyraPlaybackService::class.java),
@@ -98,11 +104,16 @@ fun VideoPlayerScreen(
         val future = MediaController.Builder(context, token).buildAsync()
         future.addListener(
             {
-                controller = runCatching { future.get() }.getOrNull()
+                if (!disposed) {
+                    val connected = runCatching { future.get() }.getOrNull()
+                    controller = connected
+                    connectionFailed = connected == null
+                }
             },
             ContextCompat.getMainExecutor(context),
         )
         onDispose {
+            disposed = true
             MediaController.releaseFuture(future)
             controller = null
         }
@@ -114,7 +125,17 @@ fun VideoPlayerScreen(
             modifier = Modifier.fillMaxSize().background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
-            Text("Connecting to Veyra player…", color = Color.White)
+            if (connectionFailed) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text("Veyra couldn't connect to the player service.", color = Color.White)
+                    TextButton(onClick = { connectionAttempt += 1 }) { Text("Retry") }
+                }
+            } else {
+                Text("Connecting to Veyra player…", color = Color.White)
+            }
         }
     } else {
         ConnectedVideoPlayerScreen(
@@ -146,6 +167,7 @@ private fun ConnectedVideoPlayerScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val sleepTimerStore = remember(context) { VideoSleepTimerStore(context) }
     var resizeMode by remember(video.contentUri) {
         mutableStateOf(settingsStore.readResizeMode())
     }
@@ -205,8 +227,15 @@ private fun ConnectedVideoPlayerScreen(
     var currentPositionMs by remember(video.contentUri) { mutableStateOf(0L) }
     var durationMs by remember(video.contentUri) { mutableStateOf(video.durationMs) }
     var seekPreviewMs by remember(video.contentUri) { mutableStateOf(0L) }
-    var sleepTimerDeadlineMs by remember(video.contentUri) { mutableStateOf<Long?>(null) }
-    var sleepTimerRemainingMs by remember(video.contentUri) { mutableStateOf(0L) }
+    val initialSleepTimerRemainingMs = remember(video.contentUri) {
+        sleepTimerStore.remainingMs() ?: 0L
+    }
+    var sleepTimerActive by remember(video.contentUri) {
+        mutableStateOf(initialSleepTimerRemainingMs > 0L)
+    }
+    var sleepTimerRemainingMs by remember(video.contentUri) {
+        mutableStateOf(initialSleepTimerRemainingMs)
+    }
     var showSleepTimerDialog by remember(video.contentUri) { mutableStateOf(false) }
     var controlsLocked by remember(video.contentUri) { mutableStateOf(false) }
     var memoryMarks by remember(video.contentUri) {
@@ -294,22 +323,18 @@ private fun ConnectedVideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(player, sleepTimerDeadlineMs) {
-        val deadline = sleepTimerDeadlineMs
-        if (deadline == null) {
+    LaunchedEffect(player, sleepTimerActive) {
+        if (!sleepTimerActive) {
             sleepTimerRemainingMs = 0L
             return@LaunchedEffect
         }
         while (true) {
-            val remaining = VideoSleepTimerPolicy.remainingMs(
-                deadline,
-                SystemClock.elapsedRealtime(),
-            )
+            val remaining = sleepTimerStore.remainingMs() ?: 0L
             sleepTimerRemainingMs = remaining
             if (remaining == 0L) {
+                sleepTimerActive = false
                 player.pause()
                 controlsVisible = true
-                sleepTimerDeadlineMs = null
                 break
             }
             delay(minOf(1_000L, remaining))
@@ -606,7 +631,8 @@ private fun ConnectedVideoPlayerScreen(
                             onClick = {
                                 val duration = VideoSleepTimerPolicy.durationMs(minutes)
                                 if (duration != null) {
-                                    sleepTimerDeadlineMs = SystemClock.elapsedRealtime() + duration
+                                    sleepTimerStore.schedule(duration)
+                                    sleepTimerActive = true
                                 }
                                 showSleepTimerDialog = false
                             },
@@ -617,7 +643,8 @@ private fun ConnectedVideoPlayerScreen(
                     if (sleepTimerDeadlineMs != null) {
                         TextButton(
                             onClick = {
-                                sleepTimerDeadlineMs = null
+                                sleepTimerStore.clear()
+                                sleepTimerActive = false
                                 showSleepTimerDialog = false
                             },
                         ) {
@@ -798,6 +825,8 @@ private fun createMediaItem(
         val configuration = MediaItem.SubtitleConfiguration.Builder(Uri.parse(subtitle.uri))
             .setMimeType(mimeType)
             .setLanguage("und")
+            .setLabel(subtitle.displayName)
+            .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
             .build()
         builder.setSubtitleConfigurations(listOf(configuration))
     }
