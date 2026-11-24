@@ -39,7 +39,13 @@ object VideoPlaybackHistoryCodec {
                     positionMs = fields[2].toLong(),
                     durationMs = fields[3].toLong(),
                     lastPlayedEpochMs = fields[4].toLong(),
-                ).takeIf { it.contentUri.isNotBlank() }
+                ).takeIf {
+                    it.contentUri.isNotBlank() &&
+                        it.positionMs >= 0L &&
+                        it.durationMs >= 0L &&
+                        it.lastPlayedEpochMs >= 0L &&
+                        (it.durationMs == 0L || it.positionMs <= it.durationMs)
+                }
             }.getOrNull()
         }
         .toList()
