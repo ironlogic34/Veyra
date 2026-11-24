@@ -640,7 +640,7 @@ private fun ConnectedVideoPlayerScreen(
                             Text("$minutes minutes")
                         }
                     }
-                    if (sleepTimerDeadlineMs != null) {
+                    if (sleepTimerActive) {
                         TextButton(
                             onClick = {
                                 sleepTimerStore.clear()
