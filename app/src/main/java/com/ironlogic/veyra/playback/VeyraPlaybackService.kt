@@ -1,8 +1,10 @@
 package com.ironlogic.veyra.playback
 
+import android.content.Context
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -13,12 +15,14 @@ import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoProgressWritePolicy
 import com.ironlogic.veyra.data.video.VideoResumePolicy
+import com.ironlogic.veyra.data.video.VideoSleepTimerPolicy
 
 /** Owns playback and keeps progress/history current while the UI is not visible. */
 class VeyraPlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private lateinit var progressStore: VideoPlaybackProgressStore
     private lateinit var historyStore: VideoPlaybackHistoryStore
+    private lateinit var sleepTimerStore: VideoSleepTimerStore
 
     private val progressHandler = Handler(Looper.getMainLooper())
     private var trackedVideo: VideoItem? = null
@@ -30,6 +34,9 @@ class VeyraPlaybackService : MediaSessionService() {
         override fun run() {
             updateTrackedSnapshot()
             persistTrackedPlayback()
+            if (sleepTimerStore.remainingMs() == 0L) {
+                mediaSession?.player?.pause()
+            }
             progressHandler.postDelayed(this, PROGRESS_INTERVAL_MS)
         }
     }
@@ -38,6 +45,7 @@ class VeyraPlaybackService : MediaSessionService() {
         super.onCreate()
         progressStore = VideoPlaybackProgressStore(this)
         historyStore = VideoPlaybackHistoryStore(this)
+        sleepTimerStore = VideoSleepTimerStore(this)
 
         val player = ExoPlayer.Builder(this).build()
         player.addListener(
@@ -137,5 +145,52 @@ class VeyraPlaybackService : MediaSessionService() {
 
     private companion object {
         const val PROGRESS_INTERVAL_MS = 1_000L
+    }
+}
+
+/** Persists a sleep deadline so playback can stop even after the player screen is closed. */
+class VideoSleepTimerStore(context: Context) {
+    private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+
+    fun schedule(durationMs: Long) {
+        if (durationMs <= 0L) {
+            clear()
+            return
+        }
+        preferences.edit()
+            .putLong(KEY_ELAPSED_DEADLINE, SystemClock.elapsedRealtime() + durationMs)
+            .putLong(KEY_WALL_CLOCK_DEADLINE, System.currentTimeMillis() + durationMs)
+            .apply()
+    }
+
+    fun remainingMs(): Long? {
+        if (!preferences.contains(KEY_ELAPSED_DEADLINE) || !preferences.contains(KEY_WALL_CLOCK_DEADLINE)) {
+            clear()
+            return null
+        }
+        val elapsedRemaining = VideoSleepTimerPolicy.remainingMs(
+            preferences.getLong(KEY_ELAPSED_DEADLINE, 0L),
+            SystemClock.elapsedRealtime(),
+        )
+        val wallClockRemaining = VideoSleepTimerPolicy.remainingMs(
+            preferences.getLong(KEY_WALL_CLOCK_DEADLINE, 0L),
+            System.currentTimeMillis(),
+        )
+        val remaining = minOf(elapsedRemaining, wallClockRemaining)
+        if (remaining == 0L) clear()
+        return remaining
+    }
+
+    fun clear() {
+        preferences.edit()
+            .remove(KEY_ELAPSED_DEADLINE)
+            .remove(KEY_WALL_CLOCK_DEADLINE)
+            .apply()
+    }
+
+    private companion object {
+        const val PREFERENCES = "veyra_sleep_timer"
+        const val KEY_ELAPSED_DEADLINE = "elapsed_deadline_ms"
+        const val KEY_WALL_CLOCK_DEADLINE = "wall_clock_deadline_ms"
     }
 }
