@@ -164,7 +164,10 @@ class VideoSleepTimerStore(context: Context) {
     }
 
     fun remainingMs(): Long? {
-        if (!preferences.contains(KEY_ELAPSED_DEADLINE) || !preferences.contains(KEY_WALL_CLOCK_DEADLINE)) {
+        val hasElapsedDeadline = preferences.contains(KEY_ELAPSED_DEADLINE)
+        val hasWallClockDeadline = preferences.contains(KEY_WALL_CLOCK_DEADLINE)
+        if (!hasElapsedDeadline && !hasWallClockDeadline) return null
+        if (!hasElapsedDeadline || !hasWallClockDeadline) {
             clear()
             return null
         }
