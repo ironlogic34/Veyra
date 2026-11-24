@@ -53,6 +53,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.common.Player
@@ -238,6 +239,7 @@ private fun ConnectedVideoPlayerScreen(
     }
     var showSleepTimerDialog by remember(video.contentUri) { mutableStateOf(false) }
     var controlsLocked by remember(video.contentUri) { mutableStateOf(false) }
+    var playbackError by remember(video.contentUri) { mutableStateOf<String?>(null) }
     var memoryMarks by remember(video.contentUri) {
         mutableStateOf(memoryMarkStore.readForVideo(video.contentUri))
     }
@@ -342,7 +344,24 @@ private fun ConnectedVideoPlayerScreen(
     }
 
     DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                playbackError = if (error.cause is SecurityException) {
+                    "Veyra no longer has permission to read this video. Return to the library and restore access."
+                } else {
+                    "Veyra couldn't play this video. Check that the file is available and that its format is supported."
+                }
+                controlsLocked = false
+                controlsVisible = true
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_READY) playbackError = null
+            }
+        }
+        player.addListener(listener)
         onDispose {
+            player.removeListener(listener)
             if (player.playbackState == Player.STATE_ENDED) {
                 progressStore.clear(video)
             } else {
@@ -615,6 +634,33 @@ private fun ConnectedVideoPlayerScreen(
                 ) {
                     Text("Controls locked", color = Color.White, fontWeight = FontWeight.SemiBold)
                     Text("Hold anywhere to unlock", color = Color.LightGray, fontSize = 12.sp)
+                }
+            }
+        }
+
+        playbackError?.let { message ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.92f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text("Unable to play this video", color = Color.White, fontWeight = FontWeight.SemiBold)
+                    Text(message, color = Color.LightGray)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        TextButton(onClick = ::saveAndExit) { Text("Back to library") }
+                        Button(
+                            onClick = {
+                                player.prepare()
+                                player.playWhenReady = true
+                            },
+                        ) { Text("Retry") }
+                    }
                 }
             }
         }
