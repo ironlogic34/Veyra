@@ -262,6 +262,7 @@ private fun ConnectedVideoPlayerScreen(
     }
     var showSleepTimerDialog by remember(video.contentUri) { mutableStateOf(false) }
     var showQueueDialog by remember(video.contentUri) { mutableStateOf(false) }
+    var queueMessage by remember(video.contentUri) { mutableStateOf<String?>(null) }
     var controlsLocked by remember(video.contentUri) { mutableStateOf(false) }
     var playbackError by remember(video.contentUri) { mutableStateOf<String?>(null) }
     var memoryMarks by remember(video.contentUri) {
@@ -297,7 +298,10 @@ private fun ConnectedVideoPlayerScreen(
     fun clearUpcoming() {
         val currentUri = player.currentMediaItem?.mediaId ?: video.contentUri
         val updatedQueue = VideoQueuePolicy.clearUpcoming(queue, currentUri)
-        if (updatedQueue == queue) return
+        if (updatedQueue == queue) {
+            queueMessage = "There are no upcoming videos to clear."
+            return
+        }
 
         val currentIndex = player.currentMediaItemIndex
         if (currentIndex >= 0) {
@@ -306,28 +310,40 @@ private fun ConnectedVideoPlayerScreen(
             }
         }
         onQueueChange(updatedQueue)
+        queueMessage = "Upcoming videos cleared."
         controlsVisible = true
     }
 
     fun removeFromQueue(item: VideoItem) {
         val currentUri = player.currentMediaItem?.mediaId ?: video.contentUri
         val updatedQueue = VideoQueuePolicy.remove(queue, currentUri, item.contentUri)
-        if (updatedQueue == queue) return
+        if (updatedQueue == queue) {
+            queueMessage = "This video is no longer in the queue."
+            return
+        }
 
         val playerIndex = (0 until player.mediaItemCount).firstOrNull { index ->
             player.getMediaItemAt(index).mediaId == item.contentUri
         }
         if (playerIndex != null) player.removeMediaItem(playerIndex)
         onQueueChange(updatedQueue)
+        queueMessage = "${item.displayName} removed from the queue."
         controlsVisible = true
     }
 
     fun enqueueNext(item: VideoItem) {
+        val currentIndex = player.currentMediaItemIndex
+        if (currentIndex < 0) {
+            queueMessage = "The current playback queue is unavailable."
+            controlsVisible = true
+            return
+        }
         val currentUri = player.currentMediaItem?.mediaId ?: video.contentUri
         val updatedQueue = VideoQueuePolicy.playNext(queue, currentUri, item)
         if (updatedQueue == queue) {
-            subtitleMessage = when {
+            queueMessage = when {
                 item.contentUri == currentUri -> "This video is already playing."
+                queue.none { it.contentUri == currentUri } -> "The current video is missing from the queue."
                 else -> "This video is already next."
             }
             controlsVisible = true
@@ -339,18 +355,19 @@ private fun ConnectedVideoPlayerScreen(
         }
         if (existingIndex != null) player.removeMediaItem(existingIndex)
 
-        val currentIndex = player.currentMediaItemIndex
-        if (currentIndex < 0) {
-            subtitleMessage = "The current playback queue is unavailable."
+        val updatedCurrentIndex = player.currentMediaItemIndex
+        if (updatedCurrentIndex < 0) {
+            queueMessage = "Playback changed before the queue could update."
+            controlsVisible = true
             return
         }
-        val insertionIndex = (currentIndex + 1).coerceIn(0, player.mediaItemCount)
+        val insertionIndex = (updatedCurrentIndex + 1).coerceIn(0, player.mediaItemCount)
         player.addMediaItem(
             insertionIndex,
             createMediaItem(item, readAvailableSubtitle(context, subtitleStore, item)),
         )
         onQueueChange(updatedQueue)
-        subtitleMessage = "${item.displayName} will play next."
+        queueMessage = "${item.displayName} will play next."
         controlsVisible = true
         showQueueDialog = false
     }
@@ -513,7 +530,7 @@ private fun ConnectedVideoPlayerScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Button(onClick = ::saveAndExit) { Text("Back") }
-                Button(onClick = { showQueueDialog = true }) { Text("Queue (${queue.size})") }
+                Button(onClick = { queueMessage = null; showQueueDialog = true }) { Text("Queue (${queue.size})") }
             }
             Row(
                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
@@ -633,7 +650,7 @@ private fun ConnectedVideoPlayerScreen(
                         TextButton(onClick = { showMemoryMarksDialog = true }) {
                             Text("Marks (${memoryMarks.size})")
                         }
-                        TextButton(onClick = { showQueueDialog = true }) {
+                        TextButton(onClick = { queueMessage = null; showQueueDialog = true }) {
                             Text("Queue")
                         }
                         if (selectedSubtitle != null) {
@@ -815,6 +832,9 @@ private fun ConnectedVideoPlayerScreen(
                             onClick = ::clearUpcoming,
                         ) { Text("Clear upcoming") }
                     }
+                    queueMessage?.let { message ->
+                        Text(message, color = Color.LightGray, fontSize = 12.sp)
+                    }
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -851,7 +871,11 @@ private fun ConnectedVideoPlayerScreen(
                                                     player.seekTo(targetIndex, 0L)
                                                     player.playWhenReady = true
                                                     controlsVisible = true
+                                                    queueMessage = null
                                                     showQueueDialog = false
+                                                } else {
+                                                    queueMessage = "This video is no longer in the playback queue."
+                                                    controlsVisible = true
                                                 }
                                             },
                                         ) { Text("Play now") }
