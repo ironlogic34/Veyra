@@ -43,4 +43,13 @@ object VideoQueuePolicy {
         return queue.filterNot { it.contentUri == selectedContentUri }
     }
 
+
+    /** Keeps the played history and current item while dropping all later entries. */
+    fun clearUpcoming(queue: List<VideoItem>, currentContentUri: String): List<VideoItem> {
+        if (currentContentUri.isBlank()) return queue
+        val currentIndex = queue.indexOfFirst { it.contentUri == currentContentUri }
+        if (currentIndex < 0 || currentIndex == queue.lastIndex) return queue
+        return queue.take(currentIndex + 1)
+    }
+
 }

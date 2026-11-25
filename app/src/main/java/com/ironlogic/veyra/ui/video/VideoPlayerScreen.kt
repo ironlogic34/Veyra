@@ -294,6 +294,21 @@ private fun ConnectedVideoPlayerScreen(
         selectedSubtitle = selection
     }
 
+    fun clearUpcoming() {
+        val currentUri = player.currentMediaItem?.mediaId ?: video.contentUri
+        val updatedQueue = VideoQueuePolicy.clearUpcoming(queue, currentUri)
+        if (updatedQueue == queue) return
+
+        val currentIndex = player.currentMediaItemIndex
+        if (currentIndex >= 0) {
+            for (index in player.mediaItemCount - 1 downTo currentIndex + 1) {
+                player.removeMediaItem(index)
+            }
+        }
+        onQueueChange(updatedQueue)
+        controlsVisible = true
+    }
+
     fun removeFromQueue(item: VideoItem) {
         val currentUri = player.currentMediaItem?.mediaId ?: video.contentUri
         val updatedQueue = VideoQueuePolicy.remove(queue, currentUri, item.contentUri)
@@ -789,7 +804,17 @@ private fun ConnectedVideoPlayerScreen(
             title = { Text("Playback queue") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("${queue.size} videos in this session", color = Color.LightGray)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("${queue.size} videos in this session", color = Color.LightGray)
+                        TextButton(
+                            enabled = currentQueueIndex >= 0 && currentQueueIndex < queue.lastIndex,
+                            onClick = ::clearUpcoming,
+                        ) { Text("Clear upcoming") }
+                    }
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),

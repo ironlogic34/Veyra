@@ -131,6 +131,26 @@ class VideoQueuePolicyTest {
         assertEquals(queue, VideoQueuePolicy.remove(queue, current.contentUri, "missing"))
     }
 
+    @Test
+    fun `clear upcoming preserves earlier videos and the current item`() {
+        val earlier = video("earlier")
+        val current = video("current")
+        val next = video("next")
+        val last = video("last")
+
+        assertEquals(
+            listOf(earlier, current),
+            VideoQueuePolicy.clearUpcoming(listOf(earlier, current, next, last), current.contentUri),
+        )
+    }
+
+    @Test
+    fun `clear upcoming leaves an unknown current item unchanged`() {
+        val queue = listOf(video("first"), video("second"))
+
+        assertEquals(queue, VideoQueuePolicy.clearUpcoming(queue, "missing"))
+    }
+
     private fun video(id: String) = VideoItem(
         id = "content://video/$id",
         contentUri = "content://video/$id",
