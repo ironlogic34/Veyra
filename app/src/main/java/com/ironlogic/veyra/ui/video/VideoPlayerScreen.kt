@@ -369,7 +369,6 @@ private fun ConnectedVideoPlayerScreen(
         onQueueChange(updatedQueue)
         queueMessage = "${item.displayName} will play next."
         controlsVisible = true
-        showQueueDialog = false
     }
 
     val subtitlePicker = rememberLauncherForActivityResult(
