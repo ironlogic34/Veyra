@@ -25,4 +25,8 @@ object VideoQueuePolicy {
             add(currentIndex + 1, selected)
         }
     }
+
+    /** Builds a unique playlist while ensuring the selected video is present. */
+    fun playlist(queue: List<VideoItem>, currentVideo: VideoItem): List<VideoItem> =
+        (queue + currentVideo).distinctBy { it.contentUri }
 }

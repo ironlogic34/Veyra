@@ -207,8 +207,8 @@ private fun ConnectedVideoPlayerScreen(
         }
     }
 
-    LaunchedEffect(player, video.contentUri, initialSubtitle, initialPositionMs) {
-        val playlist = (queue + video).distinctBy { it.contentUri }
+    LaunchedEffect(player, video.contentUri, queue, initialSubtitle, initialPositionMs) {
+        val playlist = VideoQueuePolicy.playlist(queue, video)
         val selectedIndex = playlist.indexOfFirst { it.contentUri == video.contentUri }.coerceAtLeast(0)
         val desiredIds = playlist.map { it.contentUri }
         val currentIds = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }

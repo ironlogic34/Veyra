@@ -78,6 +78,30 @@ class VideoQueuePolicyTest {
         assertEquals(queue, VideoQueuePolicy.playNext(queue, "missing", video("selected")))
     }
 
+    @Test
+    fun `playlist preserves queue order and appends the selected video when missing`() {
+        val first = video("first")
+        val current = video("current")
+        val last = video("last")
+
+        assertEquals(
+            listOf(first, last, current),
+            VideoQueuePolicy.playlist(listOf(first, last), current),
+        )
+    }
+
+    @Test
+    fun `playlist keeps the first occurrence of duplicate media identities`() {
+        val current = video("current")
+        val duplicate = current.copy(displayName = "stale-name.mp4")
+        val later = video("later")
+
+        assertEquals(
+            listOf(current, later),
+            VideoQueuePolicy.playlist(listOf(current, duplicate, later), current),
+        )
+    }
+
     private fun video(id: String) = VideoItem(
         id = "content://video/$id",
         contentUri = "content://video/$id",
