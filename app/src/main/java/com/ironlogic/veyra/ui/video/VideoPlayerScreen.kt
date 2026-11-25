@@ -214,15 +214,16 @@ private fun ConnectedVideoPlayerScreen(
         val currentMatches = player.currentMediaItem?.mediaId == video.contentUri
 
         if (!currentMatches || currentIds != desiredIds) {
-            val startPositionMs = if (currentMatches) {
-                player.currentPosition
-            } else {
-                VideoAutoResumePolicy.startPositionMs(
-                    autoResumeEnabled = settingsStore.readAutoResumeEnabled(),
-                    manualPositionMs = initialPositionMs,
-                    savedPositionMs = progressStore.read(video)?.positionMs,
-                )
-            }
+            val startPositionMs = initialPositionMs?.coerceAtLeast(0L)
+                ?: if (currentMatches) {
+                    player.currentPosition
+                } else {
+                    VideoAutoResumePolicy.startPositionMs(
+                        autoResumeEnabled = settingsStore.readAutoResumeEnabled(),
+                        manualPositionMs = null,
+                        savedPositionMs = progressStore.read(video)?.positionMs,
+                    )
+                }
             val wasPlaying = player.playWhenReady
             val mediaItems = playlist.map { item ->
                 val subtitle = if (item.contentUri == video.contentUri) {
@@ -374,6 +375,14 @@ private fun ConnectedVideoPlayerScreen(
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 val nextVideo = queue.firstOrNull { it.contentUri == mediaItem?.mediaId }
                 if (nextVideo != null && nextVideo.contentUri != video.contentUri) {
+                    val resumePositionMs = VideoAutoResumePolicy.startPositionMs(
+                        autoResumeEnabled = settingsStore.readAutoResumeEnabled(),
+                        manualPositionMs = null,
+                        savedPositionMs = progressStore.read(nextVideo)?.positionMs,
+                    )
+                    if (resumePositionMs > 0L) {
+                        player.seekTo(player.currentMediaItemIndex, resumePositionMs)
+                    }
                     onVideoChanged(nextVideo)
                 }
             }
@@ -601,16 +610,16 @@ private fun ConnectedVideoPlayerScreen(
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
+                        horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         TextButton(
+                            enabled = player.hasPreviousMediaItem(),
                             onClick = {
-                                player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L))
+                                player.seekToPreviousMediaItem()
                                 controlsVisible = true
                             },
-                        ) { Text("−10s") }
-                        Spacer(modifier = Modifier.weight(1f))
+                        ) { Text("Previous") }
                         TextButton(
                             onClick = {
                                 if (player.isPlaying) player.pause() else player.play()
@@ -624,7 +633,26 @@ private fun ConnectedVideoPlayerScreen(
                                 fontSize = 16.sp,
                             )
                         }
-                        Spacer(modifier = Modifier.weight(1f))
+                        TextButton(
+                            enabled = player.hasNextMediaItem(),
+                            onClick = {
+                                player.seekToNextMediaItem()
+                                controlsVisible = true
+                            },
+                        ) { Text("Next") }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(
+                            onClick = {
+                                player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L))
+                                controlsVisible = true
+                            },
+                        ) { Text("−10s") }
+                        Spacer(modifier = Modifier.width(40.dp))
                         TextButton(
                             onClick = {
                                 val target = (player.currentPosition + 10_000L).coerceAtMost(durationMs)
