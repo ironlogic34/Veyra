@@ -17,10 +17,18 @@ data class VideoFolder(
     val accessible: Boolean,
 )
 
+data class VideoFolderDirectory(
+    val uri: String,
+    val parentUri: String,
+    val rootUri: String,
+    val name: String,
+)
+
 data class VideoFolderScanResult(
     val folders: List<VideoFolder>,
     val videos: List<VideoItem>,
     val errors: List<String>,
+    val directories: List<VideoFolderDirectory> = emptyList(),
 )
 
 /** Scans only folders the user explicitly granted through ACTION_OPEN_DOCUMENT_TREE. */
@@ -30,6 +38,7 @@ class VideoFolderRepository(
     suspend fun scan(folderUris: List<String>): VideoFolderScanResult = withContext(Dispatchers.IO) {
         val folders = mutableListOf<VideoFolder>()
         val videos = linkedMapOf<String, VideoItem>()
+        val directories = mutableListOf<VideoFolderDirectory>()
         val errors = mutableListOf<String>()
 
         for (rawUri in folderUris.distinct()) {
@@ -44,7 +53,7 @@ class VideoFolderRepository(
             } else {
                 var accessible = true
                 try {
-                    collectVideos(root, rawUri, videos)
+                    collectVideos(root, rawUri, videos, directories)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: SecurityException) {
@@ -57,27 +66,54 @@ class VideoFolderRepository(
             }
         }
 
-        VideoFolderScanResult(folders, videos.values.toList(), errors)
+        VideoFolderScanResult(
+            folders = folders,
+            videos = videos.values.toList(),
+            errors = errors,
+            directories = directories.distinctBy { it.rootUri to it.uri },
+        )
     }
 
     private suspend fun collectVideos(
         root: DocumentFile,
         folderUri: String,
         videos: MutableMap<String, VideoItem>,
+        directories: MutableList<VideoFolderDirectory>,
     ) {
-        val pending = ArrayDeque<DocumentFile>()
+        data class PendingDirectory(
+            val document: DocumentFile,
+            val navigationUri: String,
+            val ancestorUris: Set<String>,
+        )
+
+        val pending = ArrayDeque<PendingDirectory>()
         val visited = mutableSetOf<String>()
-        pending.add(root)
+        pending.add(PendingDirectory(root, folderUri, setOf(folderUri)))
 
         while (pending.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
             val directory = pending.removeFirst()
-            if (!visited.add(directory.uri.toString())) continue
+            if (!visited.add(directory.document.uri.toString())) continue
 
-            for (child in directory.listFiles()) {
+            for (child in directory.document.listFiles()) {
                 currentCoroutineContext().ensureActive()
                 when {
-                    child.isDirectory -> pending.add(child)
+                    child.isDirectory -> {
+                        val childUri = child.uri.toString()
+                        directories += VideoFolderDirectory(
+                            uri = childUri,
+                            parentUri = directory.navigationUri,
+                            rootUri = folderUri,
+                            name = child.name?.takeIf { it.isNotBlank() } ?: "Untitled folder",
+                        )
+                        pending.add(
+                            PendingDirectory(
+                                document = child,
+                                navigationUri = childUri,
+                                ancestorUris = directory.ancestorUris + childUri,
+                            ),
+                        )
+                    }
                     child.isFile && VideoFolderMediaTypePolicy.isVideo(child.type, child.name) -> {
                         val uri = child.uri
                         val uriString = uri.toString()
@@ -85,6 +121,7 @@ class VideoFolderRepository(
                         if (existing != null) {
                             videos[uriString] = existing.copy(
                                 sourceFolderUris = existing.sourceFolderUris + folderUri,
+                                sourceDirectoryUris = existing.sourceDirectoryUris + directory.ancestorUris,
                             )
                         } else {
                             val name = child.name?.takeIf { it.isNotBlank() } ?: "Untitled video"
@@ -98,6 +135,7 @@ class VideoFolderRepository(
                                 addedEpochSeconds = modifiedEpochSeconds,
                                 modifiedEpochSeconds = modifiedEpochSeconds,
                                 sourceFolderUris = setOf(folderUri),
+                                sourceDirectoryUris = directory.ancestorUris,
                             )
                         }
                     }
@@ -106,6 +144,8 @@ class VideoFolderRepository(
             currentCoroutineContext().ensureActive()
         }
     }
+
+
 
     private fun readDuration(uri: Uri): Long {
         val retriever = MediaMetadataRetriever()

@@ -73,4 +73,5 @@ data class VideoItem(
     val addedEpochSeconds: Long,
     val modifiedEpochSeconds: Long = 0L,
     val sourceFolderUris: Set<String> = emptySet(),
+    val sourceDirectoryUris: Set<String> = emptySet(),
 )

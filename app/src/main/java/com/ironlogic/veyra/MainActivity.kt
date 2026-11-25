@@ -63,6 +63,7 @@ import com.ironlogic.veyra.data.video.VideoMemoryMarkStore
 import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoFolderRepository
 import com.ironlogic.veyra.data.video.VideoFolderBrowsePolicy
+import com.ironlogic.veyra.data.video.VideoFolderDirectory
 import com.ironlogic.veyra.data.video.VideoFolderStore
 import com.ironlogic.veyra.data.video.VideoLibraryMergePolicy
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
@@ -122,6 +123,8 @@ private fun VeyraHome() {
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var selectedFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
     var openedFolderUri by remember { mutableStateOf<String?>(null) }
+    var openedFolderRootUri by remember { mutableStateOf<String?>(null) }
+    var folderDirectories by remember { mutableStateOf<List<VideoFolderDirectory>>(emptyList()) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
     var selectedVideoStartPositionMs by remember { mutableStateOf<Long?>(null) }
     var playbackQueue by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
@@ -205,11 +208,23 @@ private fun VeyraHome() {
 
                 val folderResult = folderRepository.scan(folderStore.read())
                 selectedFolders = folderResult.folders
-                if (openedFolderUri != null && folderResult.folders.none {
-                        it.uri == openedFolderUri && it.accessible
+                folderDirectories = folderResult.directories
+                val activeRootUri = openedFolderRootUri
+                if (activeRootUri != null && folderResult.folders.none {
+                        it.uri == activeRootUri && it.accessible
                     }
                 ) {
                     openedFolderUri = null
+                    openedFolderRootUri = null
+                } else if (
+                    openedFolderUri != null &&
+                    openedFolderRootUri != null &&
+                    openedFolderUri != openedFolderRootUri &&
+                    folderResult.directories.none {
+                        it.uri == openedFolderUri && it.rootUri == openedFolderRootUri
+                    }
+                ) {
+                    openedFolderUri = openedFolderRootUri
                 }
                 if (localScanError == null || folderResult.videos.isNotEmpty()) {
                     videos = VideoLibraryMergePolicy.merge(localVideos, folderResult.videos)
@@ -261,14 +276,25 @@ private fun VeyraHome() {
                 hasPermission = videoAccess != VideoAccessState.NONE,
                 folders = selectedFolders,
                 activeFolderUri = openedFolderUri,
+                activeFolderRootUri = openedFolderRootUri,
+                directories = folderDirectories,
                 thumbnailRepository = thumbnailRepository,
                 onOpenVideo = { item, queueItems -> openVideo(item, queueItems = queueItems) },
-                onOpenFolder = { openedFolderUri = it },
-                onCloseFolder = { openedFolderUri = null },
+                onOpenFolder = { folderUri, rootUri ->
+                    openedFolderUri = folderUri
+                    openedFolderRootUri = rootUri
+                },
+                onCloseFolder = {
+                    openedFolderUri = null
+                    openedFolderRootUri = null
+                },
                 onRequestPermission = { permissionLauncher.launch(permissionRequests) },
                 onAddFolder = { folderPickerLauncher.launch(null) },
                 onRemoveFolder = { folderUri ->
-                    if (openedFolderUri == folderUri) openedFolderUri = null
+                    if (openedFolderRootUri == folderUri) {
+                        openedFolderUri = null
+                        openedFolderRootUri = null
+                    }
                     val uri = Uri.parse(folderUri)
                     folderStore.remove(uri)
                     runCatching {
@@ -428,9 +454,11 @@ private fun LibraryContent(
     hasPermission: Boolean,
     folders: List<VideoFolder>,
     activeFolderUri: String?,
+    activeFolderRootUri: String?,
+    directories: List<VideoFolderDirectory>,
     thumbnailRepository: VideoThumbnailRepository,
     onOpenVideo: (VideoItem, List<VideoItem>) -> Unit,
-    onOpenFolder: (String) -> Unit,
+    onOpenFolder: (String, String) -> Unit,
     onCloseFolder: () -> Unit,
     onRequestPermission: () -> Unit,
     onAddFolder: () -> Unit,
@@ -440,7 +468,23 @@ private fun LibraryContent(
     val visibleVideos = activeFolderUri?.let { folderUri ->
         VideoFolderBrowsePolicy.videosInFolder(videos, folderUri)
     } ?: videos
-    val activeFolder = folders.firstOrNull { it.uri == activeFolderUri }
+    val activeRoot = folders.firstOrNull { it.uri == activeFolderRootUri }
+    val activeDirectory = if (activeFolderUri != activeFolderRootUri && activeFolderRootUri != null) {
+        directories.firstOrNull { it.uri == activeFolderUri && it.rootUri == activeFolderRootUri }
+    } else {
+        null
+    }
+    val activeFolderName = activeDirectory?.name ?: activeRoot?.name
+    val parentFolderUri = if (activeFolderRootUri != null && activeFolderUri != null) {
+        VideoFolderBrowsePolicy.parentFolderUri(directories, activeFolderRootUri, activeFolderUri)
+    } else {
+        null
+    }
+    val visibleDirectories = if (activeFolderUri != null && activeFolderRootUri != null) {
+        VideoFolderBrowsePolicy.childFolders(directories, activeFolderRootUri, activeFolderUri)
+    } else {
+        emptyList()
+    }
 
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -451,8 +495,8 @@ private fun LibraryContent(
             videoCounts = folders.associate { folder ->
                 folder.uri to VideoFolderBrowsePolicy.videosInFolder(videos, folder.uri).size
             },
-            activeFolderUri = activeFolderUri,
-            onOpenFolder = onOpenFolder,
+            activeFolderRootUri = activeFolderRootUri,
+            onOpenFolder = { folderUri -> onOpenFolder(folderUri, folderUri) },
             onAddFolder = onAddFolder,
             onRemoveFolder = onRemoveFolder,
         )
@@ -463,12 +507,45 @@ private fun LibraryContent(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    activeFolder?.name?.let { "Folder · $it" } ?: "Selected folder",
+                    activeFolderName?.let { "Folder · $it" } ?: "Selected folder",
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                 )
-                TextButton(onClick = onCloseFolder) { Text("All videos") }
+                TextButton(
+                    onClick = {
+                        if (parentFolderUri == null || activeFolderRootUri == null) {
+                            onCloseFolder()
+                        } else {
+                            onOpenFolder(parentFolderUri, activeFolderRootUri)
+                        }
+                    },
+                ) {
+                    Text(if (parentFolderUri == null) "All videos" else "Up")
+                }
+            }
+        }
+        if (visibleDirectories.isNotEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text("Folders", color = VeyraColors.muted, fontSize = 12.sp)
+                visibleDirectories.forEach { directory ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(VeyraColors.surface.copy(alpha = 0.55f), RoundedCornerShape(14.dp))
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(directory.name, color = Color.White, maxLines = 1)
+                        TextButton(onClick = { onOpenFolder(directory.uri, directory.rootUri) }) {
+                            Text("Open")
+                        }
+                    }
+                }
             }
         }
         when {
@@ -482,7 +559,7 @@ private fun LibraryContent(
                     ScanErrorCard(scanError, onRefresh)
                 }
                 when {
-                    activeFolderUri != null && activeFolder?.accessible == false ->
+                    activeFolderUri != null && activeRoot?.accessible == false ->
                         StatusCard("Access to this folder is unavailable. Restore it from Selected folders.")
                     activeFolderUri != null && visibleVideos.isEmpty() && scanError == null ->
                         StatusCard("No videos were found in this folder.")
@@ -512,7 +589,7 @@ private fun LibraryContent(
 private fun FolderAccessSection(
     folders: List<VideoFolder>,
     videoCounts: Map<String, Int>,
-    activeFolderUri: String?,
+    activeFolderRootUri: String?,
     onOpenFolder: (String) -> Unit,
     onAddFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
@@ -532,7 +609,7 @@ private fun FolderAccessSection(
             Column(modifier = Modifier.weight(1f)) {
                 Text("Selected folders", color = Color.White, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Open a folder to browse only its videos.",
+                    "Open a folder to browse its contents.",
                     color = VeyraColors.muted,
                     fontSize = 12.sp,
                 )
@@ -555,10 +632,10 @@ private fun FolderAccessSection(
                     )
                 }
                 Button(
-                    enabled = folder.accessible && activeFolderUri != folder.uri,
+                    enabled = folder.accessible && activeFolderRootUri != folder.uri,
                     onClick = { onOpenFolder(folder.uri) },
                 ) {
-                    Text(if (activeFolderUri == folder.uri) "Opened" else "Open")
+                    Text(if (activeFolderRootUri == folder.uri) "Browsing" else "Open")
                 }
                 TextButton(onClick = { onRemoveFolder(folder.uri) }) {
                     Text("Remove")
