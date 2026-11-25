@@ -29,4 +29,18 @@ object VideoQueuePolicy {
     /** Builds a unique playlist while ensuring the selected video is present. */
     fun playlist(queue: List<VideoItem>, currentVideo: VideoItem): List<VideoItem> =
         (queue + currentVideo).distinctBy { it.contentUri }
+
+    /** Removes a non-current item without ever emptying or losing the active entry. */
+    fun remove(
+        queue: List<VideoItem>,
+        currentContentUri: String,
+        selectedContentUri: String,
+    ): List<VideoItem> {
+        if (currentContentUri.isBlank() || selectedContentUri.isBlank() || selectedContentUri == currentContentUri) {
+            return queue
+        }
+        if (queue.none { it.contentUri == selectedContentUri }) return queue
+        return queue.filterNot { it.contentUri == selectedContentUri }
+    }
+
 }

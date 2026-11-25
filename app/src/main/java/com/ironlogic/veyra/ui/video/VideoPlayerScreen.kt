@@ -294,6 +294,19 @@ private fun ConnectedVideoPlayerScreen(
         selectedSubtitle = selection
     }
 
+    fun removeFromQueue(item: VideoItem) {
+        val currentUri = player.currentMediaItem?.mediaId ?: video.contentUri
+        val updatedQueue = VideoQueuePolicy.remove(queue, currentUri, item.contentUri)
+        if (updatedQueue == queue) return
+
+        val playerIndex = (0 until player.mediaItemCount).firstOrNull { index ->
+            player.getMediaItemAt(index).mediaId == item.contentUri
+        }
+        if (playerIndex != null) player.removeMediaItem(playerIndex)
+        onQueueChange(updatedQueue)
+        controlsVisible = true
+    }
+
     fun enqueueNext(item: VideoItem) {
         val currentUri = player.currentMediaItem?.mediaId ?: video.contentUri
         val updatedQueue = VideoQueuePolicy.playNext(queue, currentUri, item)
@@ -819,6 +832,9 @@ private fun ConnectedVideoPlayerScreen(
                                         ) { Text("Play now") }
                                         TextButton(onClick = { enqueueNext(item) }) {
                                             Text("Play next")
+                                        }
+                                        TextButton(onClick = { removeFromQueue(item) }) {
+                                            Text("Remove")
                                         }
                                     }
                                 }

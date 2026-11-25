@@ -102,6 +102,35 @@ class VideoQueuePolicyTest {
         )
     }
 
+    @Test
+    fun `remove drops a queued item without changing the active video`() {
+        val current = video("current")
+        val selected = video("selected")
+        val later = video("later")
+
+        assertEquals(
+            listOf(current, later),
+            VideoQueuePolicy.remove(listOf(current, selected, later), current.contentUri, selected.contentUri),
+        )
+    }
+
+    @Test
+    fun `remove never removes the currently playing video`() {
+        val current = video("current")
+        val later = video("later")
+        val queue = listOf(current, later)
+
+        assertEquals(queue, VideoQueuePolicy.remove(queue, current.contentUri, current.contentUri))
+    }
+
+    @Test
+    fun `remove leaves the queue unchanged for an unknown item`() {
+        val current = video("current")
+        val queue = listOf(current)
+
+        assertEquals(queue, VideoQueuePolicy.remove(queue, current.contentUri, "missing"))
+    }
+
     private fun video(id: String) = VideoItem(
         id = "content://video/$id",
         contentUri = "content://video/$id",
