@@ -261,6 +261,7 @@ private fun ConnectedVideoPlayerScreen(
         mutableStateOf(initialSleepTimerRemainingMs)
     }
     var showSleepTimerDialog by remember(video.contentUri) { mutableStateOf(false) }
+    var showQueueDialog by remember(video.contentUri) { mutableStateOf(false) }
     var controlsLocked by remember(video.contentUri) { mutableStateOf(false) }
     var playbackError by remember(video.contentUri) { mutableStateOf<String?>(null) }
     var memoryMarks by remember(video.contentUri) {
@@ -291,6 +292,39 @@ private fun ConnectedVideoPlayerScreen(
         player.prepare()
         player.playWhenReady = wasReadyToPlay
         selectedSubtitle = selection
+    }
+
+    fun enqueueNext(item: VideoItem) {
+        val currentUri = player.currentMediaItem?.mediaId ?: video.contentUri
+        val updatedQueue = VideoQueuePolicy.playNext(queue, currentUri, item)
+        if (updatedQueue == queue) {
+            subtitleMessage = when {
+                item.contentUri == currentUri -> "This video is already playing."
+                else -> "This video is already next."
+            }
+            controlsVisible = true
+            return
+        }
+
+        val existingIndex = (0 until player.mediaItemCount).firstOrNull { index ->
+            player.getMediaItemAt(index).mediaId == item.contentUri
+        }
+        if (existingIndex != null) player.removeMediaItem(existingIndex)
+
+        val currentIndex = player.currentMediaItemIndex
+        if (currentIndex < 0) {
+            subtitleMessage = "The current playback queue is unavailable."
+            return
+        }
+        val insertionIndex = (currentIndex + 1).coerceIn(0, player.mediaItemCount)
+        player.addMediaItem(
+            insertionIndex,
+            createMediaItem(item, readAvailableSubtitle(context, subtitleStore, item)),
+        )
+        onQueueChange(updatedQueue)
+        subtitleMessage = "${item.displayName} will play next."
+        controlsVisible = true
+        showQueueDialog = false
     }
 
     val subtitlePicker = rememberLauncherForActivityResult(
@@ -446,11 +480,12 @@ private fun ConnectedVideoPlayerScreen(
         )
 
         if (isTabletLandscape && !controlsLocked) {
-            Button(
-                onClick = ::saveAndExit,
+            Row(
                 modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Back")
+                Button(onClick = ::saveAndExit) { Text("Back") }
+                Button(onClick = { showQueueDialog = true }) { Text("Queue (${queue.size})") }
             }
             Row(
                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
@@ -569,6 +604,9 @@ private fun ConnectedVideoPlayerScreen(
                         }
                         TextButton(onClick = { showMemoryMarksDialog = true }) {
                             Text("Marks (${memoryMarks.size})")
+                        }
+                        TextButton(onClick = { showQueueDialog = true }) {
+                            Text("Queue")
                         }
                         if (selectedSubtitle != null) {
                             TextButton(
@@ -728,6 +766,71 @@ private fun ConnectedVideoPlayerScreen(
                 }
             }
         }
+    }
+
+    if (showQueueDialog) {
+        val currentUri = player.currentMediaItem?.mediaId
+        val currentQueueIndex = queue.indexOfFirst { it.contentUri == currentUri }
+        AlertDialog(
+            onDismissRequest = { showQueueDialog = false },
+            title = { Text("Playback queue") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("${queue.size} videos in this session", color = Color.LightGray)
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        itemsIndexed(queue, key = { _, item -> item.contentUri }) { index, item ->
+                            val isCurrent = item.contentUri == currentUri
+                            val status = when {
+                                isCurrent -> "Now playing"
+                                index > currentQueueIndex -> "Up next"
+                                else -> "Earlier in queue"
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF211E25), RoundedCornerShape(14.dp))
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    item.displayName,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                )
+                                Text(status, color = Color.LightGray, fontSize = 11.sp)
+                                if (!isCurrent) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        TextButton(
+                                            onClick = {
+                                                val targetIndex = (0 until player.mediaItemCount).firstOrNull { playerIndex ->
+                                                    player.getMediaItemAt(playerIndex).mediaId == item.contentUri
+                                                }
+                                                if (targetIndex != null) {
+                                                    player.seekTo(targetIndex, 0L)
+                                                    player.playWhenReady = true
+                                                    controlsVisible = true
+                                                    showQueueDialog = false
+                                                }
+                                            },
+                                        ) { Text("Play now") }
+                                        TextButton(onClick = { enqueueNext(item) }) {
+                                            Text("Play next")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showQueueDialog = false }) { Text("Close") }
+            },
+        )
     }
 
     if (showSleepTimerDialog) {
