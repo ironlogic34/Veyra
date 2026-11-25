@@ -44,7 +44,7 @@ class VideoFolderRepository(
             } else {
                 var accessible = true
                 try {
-                    collectVideos(root, videos)
+                    collectVideos(root, rawUri, videos)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: SecurityException) {
@@ -62,6 +62,7 @@ class VideoFolderRepository(
 
     private suspend fun collectVideos(
         root: DocumentFile,
+        folderUri: String,
         videos: MutableMap<String, VideoItem>,
     ) {
         val pending = ArrayDeque<DocumentFile>()
@@ -80,7 +81,12 @@ class VideoFolderRepository(
                     child.isFile && VideoFolderMediaTypePolicy.isVideo(child.type, child.name) -> {
                         val uri = child.uri
                         val uriString = uri.toString()
-                        if (uriString !in videos) {
+                        val existing = videos[uriString]
+                        if (existing != null) {
+                            videos[uriString] = existing.copy(
+                                sourceFolderUris = existing.sourceFolderUris + folderUri,
+                            )
+                        } else {
                             val name = child.name?.takeIf { it.isNotBlank() } ?: "Untitled video"
                             val modifiedEpochSeconds = (child.lastModified() / 1_000L).coerceAtLeast(0L)
                             videos[uriString] = VideoItem(
@@ -91,6 +97,7 @@ class VideoFolderRepository(
                                 sizeBytes = child.length().coerceAtLeast(0L),
                                 addedEpochSeconds = modifiedEpochSeconds,
                                 modifiedEpochSeconds = modifiedEpochSeconds,
+                                sourceFolderUris = setOf(folderUri),
                             )
                         }
                     }

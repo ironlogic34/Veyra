@@ -62,6 +62,7 @@ import com.ironlogic.veyra.data.video.VideoMemoryMark
 import com.ironlogic.veyra.data.video.VideoMemoryMarkStore
 import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoFolderRepository
+import com.ironlogic.veyra.data.video.VideoFolderBrowsePolicy
 import com.ironlogic.veyra.data.video.VideoFolderStore
 import com.ironlogic.veyra.data.video.VideoLibraryMergePolicy
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
@@ -120,6 +121,7 @@ private fun VeyraHome() {
     var scanError by remember { mutableStateOf<String?>(null) }
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var selectedFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
+    var openedFolderUri by remember { mutableStateOf<String?>(null) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
     var selectedVideoStartPositionMs by remember { mutableStateOf<Long?>(null) }
     var playbackQueue by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
@@ -128,8 +130,12 @@ private fun VeyraHome() {
     var memoryMarks by remember { mutableStateOf(memoryMarkStore.readAll()) }
     var destination by remember { mutableStateOf(VeyraDestination.LIBRARY) }
 
-    fun openVideo(video: VideoItem, positionMs: Long? = null) {
-        val availableQueue = videos.takeIf { items ->
+    fun openVideo(
+        video: VideoItem,
+        positionMs: Long? = null,
+        queueItems: List<VideoItem> = videos,
+    ) {
+        val availableQueue = queueItems.takeIf { items ->
             items.any { it.contentUri == video.contentUri }
         } ?: listOf(video)
         playbackQueue = availableQueue
@@ -199,6 +205,12 @@ private fun VeyraHome() {
 
                 val folderResult = folderRepository.scan(folderStore.read())
                 selectedFolders = folderResult.folders
+                if (openedFolderUri != null && folderResult.folders.none {
+                        it.uri == openedFolderUri && it.accessible
+                    }
+                ) {
+                    openedFolderUri = null
+                }
                 if (localScanError == null || folderResult.videos.isNotEmpty()) {
                     videos = VideoLibraryMergePolicy.merge(localVideos, folderResult.videos)
                 }
@@ -248,11 +260,15 @@ private fun VeyraHome() {
                 scanError = scanError,
                 hasPermission = videoAccess != VideoAccessState.NONE,
                 folders = selectedFolders,
+                activeFolderUri = openedFolderUri,
                 thumbnailRepository = thumbnailRepository,
-                onOpenVideo = { openVideo(it) },
+                onOpenVideo = { item, queueItems -> openVideo(item, queueItems = queueItems) },
+                onOpenFolder = { openedFolderUri = it },
+                onCloseFolder = { openedFolderUri = null },
                 onRequestPermission = { permissionLauncher.launch(permissionRequests) },
                 onAddFolder = { folderPickerLauncher.launch(null) },
                 onRemoveFolder = { folderUri ->
+                    if (openedFolderUri == folderUri) openedFolderUri = null
                     val uri = Uri.parse(folderUri)
                     folderStore.remove(uri)
                     runCatching {
@@ -411,18 +427,50 @@ private fun LibraryContent(
     scanError: String?,
     hasPermission: Boolean,
     folders: List<VideoFolder>,
+    activeFolderUri: String?,
     thumbnailRepository: VideoThumbnailRepository,
-    onOpenVideo: (VideoItem) -> Unit,
+    onOpenVideo: (VideoItem, List<VideoItem>) -> Unit,
+    onOpenFolder: (String) -> Unit,
+    onCloseFolder: () -> Unit,
     onRequestPermission: () -> Unit,
     onAddFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
     onRefresh: () -> Unit,
 ) {
+    val visibleVideos = activeFolderUri?.let { folderUri ->
+        VideoFolderBrowsePolicy.videosInFolder(videos, folderUri)
+    } ?: videos
+    val activeFolder = folders.firstOrNull { it.uri == activeFolderUri }
+
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        FolderAccessSection(folders, onAddFolder, onRemoveFolder)
+        FolderAccessSection(
+            folders = folders,
+            videoCounts = folders.associate { folder ->
+                folder.uri to VideoFolderBrowsePolicy.videosInFolder(videos, folder.uri).size
+            },
+            activeFolderUri = activeFolderUri,
+            onOpenFolder = onOpenFolder,
+            onAddFolder = onAddFolder,
+            onRemoveFolder = onRemoveFolder,
+        )
+        if (activeFolderUri != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    activeFolder?.name?.let { "Folder · $it" } ?: "Selected folder",
+                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+                TextButton(onClick = onCloseFolder) { Text("All videos") }
+            }
+        }
         when {
             !hasPermission && folders.isEmpty() -> PermissionCard(onRequestPermission)
             isLoading -> StatusCard("Looking through your local videos…")
@@ -433,15 +481,23 @@ private fun LibraryContent(
                 if (scanError != null) {
                     ScanErrorCard(scanError, onRefresh)
                 }
-                if (videos.isEmpty() && scanError == null) {
-                    EmptyLibraryCard(onRefresh)
-                } else if (videos.isNotEmpty()) {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        items(videos, key = { it.id }) { video ->
-                            VideoRow(video, thumbnailRepository, onOpenVideo)
+                when {
+                    activeFolderUri != null && activeFolder?.accessible == false ->
+                        StatusCard("Access to this folder is unavailable. Restore it from Selected folders.")
+                    activeFolderUri != null && visibleVideos.isEmpty() && scanError == null ->
+                        StatusCard("No videos were found in this folder.")
+                    visibleVideos.isEmpty() && scanError == null ->
+                        EmptyLibraryCard(onRefresh)
+                    visibleVideos.isNotEmpty() -> {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            items(visibleVideos, key = { it.id }) { video ->
+                                VideoRow(video, thumbnailRepository) { selected ->
+                                    onOpenVideo(selected, visibleVideos)
+                                }
+                            }
                         }
                     }
                 }
@@ -450,9 +506,14 @@ private fun LibraryContent(
     }
 }
 
+
+
 @Composable
 private fun FolderAccessSection(
     folders: List<VideoFolder>,
+    videoCounts: Map<String, Int>,
+    activeFolderUri: String?,
+    onOpenFolder: (String) -> Unit,
     onAddFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
 ) {
@@ -471,7 +532,7 @@ private fun FolderAccessSection(
             Column(modifier = Modifier.weight(1f)) {
                 Text("Selected folders", color = Color.White, fontWeight = FontWeight.SemiBold)
                 Text(
-                    "Include videos from folders you choose.",
+                    "Open a folder to browse only its videos.",
                     color = VeyraColors.muted,
                     fontSize = 12.sp,
                 )
@@ -487,10 +548,17 @@ private fun FolderAccessSection(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(folder.name, color = Color.White, maxLines = 1)
                     Text(
-                        if (folder.accessible) "Available" else "Access lost",
+                        if (folder.accessible) "${videoCounts[folder.uri] ?: 0} videos"
+                        else "Access lost",
                         color = if (folder.accessible) VeyraColors.accent else VeyraColors.muted,
                         fontSize = 11.sp,
                     )
+                }
+                Button(
+                    enabled = folder.accessible && activeFolderUri != folder.uri,
+                    onClick = { onOpenFolder(folder.uri) },
+                ) {
+                    Text(if (activeFolderUri == folder.uri) "Opened" else "Open")
                 }
                 TextButton(onClick = { onRemoveFolder(folder.uri) }) {
                     Text("Remove")
@@ -499,6 +567,8 @@ private fun FolderAccessSection(
         }
     }
 }
+
+
 
 @Composable
 private fun HistoryContent(
