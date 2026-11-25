@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -60,6 +61,7 @@ import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.ironlogic.veyra.data.video.VideoItem
+import com.ironlogic.veyra.data.video.VideoQueuePolicy
 import com.ironlogic.veyra.data.video.VideoMemoryMarkStore
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoAutoResumePolicy
@@ -80,6 +82,9 @@ import kotlinx.coroutines.delay
 @Composable
 fun VideoPlayerScreen(
     video: VideoItem,
+    queue: List<VideoItem>,
+    onQueueChange: (List<VideoItem>) -> Unit,
+    onVideoChanged: (VideoItem) -> Unit,
     progressStore: VideoPlaybackProgressStore,
     historyStore: VideoPlaybackHistoryStore,
     settingsStore: VideoPlaybackSettingsStore,
@@ -141,6 +146,9 @@ fun VideoPlayerScreen(
     } else {
         ConnectedVideoPlayerScreen(
             video = video,
+            queue = queue,
+            onQueueChange = onQueueChange,
+            onVideoChanged = onVideoChanged,
             player = connectedController,
             progressStore = progressStore,
             historyStore = historyStore,
@@ -157,6 +165,9 @@ fun VideoPlayerScreen(
 @Composable
 private fun ConnectedVideoPlayerScreen(
     video: VideoItem,
+    queue: List<VideoItem>,
+    onQueueChange: (List<VideoItem>) -> Unit,
+    onVideoChanged: (VideoItem) -> Unit,
     player: MediaController,
     progressStore: VideoPlaybackProgressStore,
     historyStore: VideoPlaybackHistoryStore,
@@ -179,14 +190,7 @@ private fun ConnectedVideoPlayerScreen(
         settingsStore.readOrientationMode()
     }
     val initialSubtitle = remember(video.contentUri) {
-        subtitleStore.read(video.contentUri)?.takeIf { selection ->
-            context.contentResolver.persistedUriPermissions.any { permission ->
-                permission.uri.toString() == selection.uri && permission.isReadPermission
-            }
-        } ?: run {
-            subtitleStore.clear(video.contentUri)
-            null
-        }
+        readAvailableSubtitle(context, subtitleStore, video)
     }
     var selectedSubtitle by remember(video.contentUri) { mutableStateOf(initialSubtitle) }
     var subtitleMessage by remember(video.contentUri) { mutableStateOf<String?>(null) }
@@ -203,17 +207,34 @@ private fun ConnectedVideoPlayerScreen(
     }
 
     LaunchedEffect(player, video.contentUri, initialSubtitle, initialPositionMs) {
-        if (player.currentMediaItem?.mediaId != video.contentUri) {
-            player.setMediaItem(createMediaItem(video, initialSubtitle))
-            player.seekTo(
+        val playlist = (queue + video).distinctBy { it.contentUri }
+        val selectedIndex = playlist.indexOfFirst { it.contentUri == video.contentUri }.coerceAtLeast(0)
+        val desiredIds = playlist.map { it.contentUri }
+        val currentIds = (0 until player.mediaItemCount).map { player.getMediaItemAt(it).mediaId }
+        val currentMatches = player.currentMediaItem?.mediaId == video.contentUri
+
+        if (!currentMatches || currentIds != desiredIds) {
+            val startPositionMs = if (currentMatches) {
+                player.currentPosition
+            } else {
                 VideoAutoResumePolicy.startPositionMs(
                     autoResumeEnabled = settingsStore.readAutoResumeEnabled(),
                     manualPositionMs = initialPositionMs,
                     savedPositionMs = progressStore.read(video)?.positionMs,
-                ),
-            )
+                )
+            }
+            val wasPlaying = player.playWhenReady
+            val mediaItems = playlist.map { item ->
+                val subtitle = if (item.contentUri == video.contentUri) {
+                    initialSubtitle
+                } else {
+                    readAvailableSubtitle(context, subtitleStore, item)
+                }
+                createMediaItem(item, subtitle)
+            }
+            player.setMediaItems(mediaItems, selectedIndex, startPositionMs)
             player.prepare()
-            player.playWhenReady = true
+            player.playWhenReady = if (currentMatches) wasPlaying else true
         } else if (initialPositionMs != null) {
             player.seekTo(initialPositionMs.coerceAtLeast(0L))
         }
@@ -250,16 +271,21 @@ private fun ConnectedVideoPlayerScreen(
     var customMemoryMarkMood by remember(video.contentUri) { mutableStateOf("") }
 
     fun saveAndExit() {
-        val duration = player.duration.takeIf { it > 0L } ?: video.durationMs
-        progressStore.save(video, player.currentPosition, duration)
-        historyStore.record(video, player.currentPosition, duration)
+        val currentUri = player.currentMediaItem?.mediaId
+        val currentVideo = queue.firstOrNull { it.contentUri == currentUri } ?: video
+        val duration = player.duration.takeIf { it > 0L } ?: currentVideo.durationMs
+        progressStore.save(currentVideo, player.currentPosition, duration)
+        historyStore.record(currentVideo, player.currentPosition, duration)
         onBack()
     }
 
     fun applySubtitle(selection: VideoSubtitleSelection?) {
+        val currentIndex = player.currentMediaItemIndex
+        if (currentIndex < 0) return
         val wasReadyToPlay = player.playWhenReady
         val position = player.currentPosition
-        player.setMediaItem(createMediaItem(video, selection), position)
+        player.replaceMediaItem(currentIndex, createMediaItem(video, selection))
+        player.seekTo(currentIndex, position)
         player.prepare()
         player.playWhenReady = wasReadyToPlay
         selectedSubtitle = selection
@@ -343,8 +369,15 @@ private fun ConnectedVideoPlayerScreen(
         }
     }
 
-    DisposableEffect(player) {
+    DisposableEffect(player, video.contentUri, queue, onVideoChanged) {
         val listener = object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                val nextVideo = queue.firstOrNull { it.contentUri == mediaItem?.mediaId }
+                if (nextVideo != null && nextVideo.contentUri != video.contentUri) {
+                    onVideoChanged(nextVideo)
+                }
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 playbackError = if (error.cause is SecurityException) {
                     "Veyra no longer has permission to read this video. Return to the library and restore access."
@@ -362,12 +395,14 @@ private fun ConnectedVideoPlayerScreen(
         player.addListener(listener)
         onDispose {
             player.removeListener(listener)
+            val currentUri = player.currentMediaItem?.mediaId
+            val currentVideo = queue.firstOrNull { it.contentUri == currentUri } ?: video
             if (player.playbackState == Player.STATE_ENDED) {
-                progressStore.clear(video)
+                progressStore.clear(currentVideo)
             } else {
-                val duration = player.duration.takeIf { it > 0L } ?: video.durationMs
-                progressStore.save(video, player.currentPosition, duration)
-                historyStore.record(video, player.currentPosition, duration)
+                val duration = player.duration.takeIf { it > 0L } ?: currentVideo.durationMs
+                progressStore.save(currentVideo, player.currentPosition, duration)
+                historyStore.record(currentVideo, player.currentPosition, duration)
             }
         }
     }
@@ -840,6 +875,20 @@ private fun ConnectedVideoPlayerScreen(
             },
         )
     }
+}
+
+private fun readAvailableSubtitle(
+    context: Context,
+    subtitleStore: VideoSubtitleStore,
+    video: VideoItem,
+): VideoSubtitleSelection? {
+    val selection = subtitleStore.read(video.contentUri) ?: return null
+    val hasReadAccess = context.contentResolver.persistedUriPermissions.any { permission ->
+        permission.uri.toString() == selection.uri && permission.isReadPermission
+    }
+    if (hasReadAccess) return selection
+    subtitleStore.clear(video.contentUri)
+    return null
 }
 
 private fun releasePersistedSubtitleAccess(context: Context, uriString: String?) {

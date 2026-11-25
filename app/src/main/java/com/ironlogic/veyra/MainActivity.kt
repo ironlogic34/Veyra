@@ -122,15 +122,24 @@ private fun VeyraHome() {
     var selectedFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
     var selectedVideo by remember { mutableStateOf<VideoItem?>(null) }
     var selectedVideoStartPositionMs by remember { mutableStateOf<Long?>(null) }
+    var playbackQueue by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var continueWatching by remember { mutableStateOf(progressStore.read()) }
     var history by remember { mutableStateOf(historyStore.read()) }
     var memoryMarks by remember { mutableStateOf(memoryMarkStore.readAll()) }
     var destination by remember { mutableStateOf(VeyraDestination.LIBRARY) }
+
+    fun openVideo(video: VideoItem, positionMs: Long? = null) {
+        val availableQueue = videos.takeIf { items ->
+            items.any { it.contentUri == video.contentUri }
+        } ?: listOf(video)
+        playbackQueue = availableQueue
+        selectedVideoStartPositionMs = positionMs
+        selectedVideo = availableQueue.firstOrNull { it.contentUri == video.contentUri } ?: video
+    }
+
     val resumeContinueWatching: () -> Unit = {
-        val progress = continueWatching
-        if (progress != null) {
-            selectedVideoStartPositionMs = progress.positionMs
-            selectedVideo = progress.asVideoItem()
+        continueWatching?.let { progress ->
+            openVideo(progress.asVideoItem(), progress.positionMs)
         }
     }
 
@@ -145,6 +154,12 @@ private fun VeyraHome() {
             isTabletLandscape = isTabletLandscape,
             subtitleStore = subtitleStore,
             memoryMarkStore = memoryMarkStore,
+            queue = playbackQueue,
+            onQueueChange = { playbackQueue = it },
+            onVideoChanged = { nextVideo ->
+                selectedVideoStartPositionMs = null
+                selectedVideo = nextVideo
+            },
             initialPositionMs = selectedVideoStartPositionMs,
             onBack = {
                 continueWatching = progressStore.read()
@@ -152,6 +167,7 @@ private fun VeyraHome() {
                 memoryMarks = memoryMarkStore.readAll()
                 selectedVideoStartPositionMs = null
                 selectedVideo = null
+                playbackQueue = emptyList()
             },
         )
         return
@@ -233,10 +249,7 @@ private fun VeyraHome() {
                 hasPermission = videoAccess != VideoAccessState.NONE,
                 folders = selectedFolders,
                 thumbnailRepository = thumbnailRepository,
-                onOpenVideo = {
-                    selectedVideoStartPositionMs = null
-                    selectedVideo = it
-                },
+                onOpenVideo = { openVideo(it) },
                 onRequestPermission = { permissionLauncher.launch(permissionRequests) },
                 onAddFolder = { folderPickerLauncher.launch(null) },
                 onRemoveFolder = { folderUri ->
@@ -256,12 +269,10 @@ private fun VeyraHome() {
                 entries = history,
                 marks = memoryMarks,
                 onOpenVideo = { entry ->
-                    selectedVideoStartPositionMs = null
-                    selectedVideo = entry.asVideoItem()
+                    openVideo(entry.asVideoItem())
                 },
                 onOpenMark = { mark ->
-                    selectedVideoStartPositionMs = mark.positionMs
-                    selectedVideo = mark.asVideoItem()
+                    openVideo(mark.asVideoItem(), mark.positionMs)
                 },
                 onRemoveMark = { mark ->
                     memoryMarkStore.remove(mark.id)
