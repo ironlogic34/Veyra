@@ -496,7 +496,9 @@ private fun LibraryContent(
                 folder.uri to VideoFolderBrowsePolicy.videosInFolder(videos, folder.uri).size
             },
             activeFolderRootUri = activeFolderRootUri,
+            isRefreshing = isLoading,
             onOpenFolder = { folderUri -> onOpenFolder(folderUri, folderUri) },
+            onRefresh = onRefresh,
             onAddFolder = onAddFolder,
             onRemoveFolder = onRemoveFolder,
         )
@@ -590,7 +592,9 @@ private fun FolderAccessSection(
     folders: List<VideoFolder>,
     videoCounts: Map<String, Int>,
     activeFolderRootUri: String?,
+    isRefreshing: Boolean,
     onOpenFolder: (String) -> Unit,
+    onRefresh: () -> Unit,
     onAddFolder: () -> Unit,
     onRemoveFolder: (String) -> Unit,
 ) {
@@ -614,7 +618,18 @@ private fun FolderAccessSection(
                     fontSize = 12.sp,
                 )
             }
-            Button(onClick = onAddFolder) { Text("Add folder") }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                TextButton(
+                    enabled = !isRefreshing,
+                    onClick = onRefresh,
+                ) {
+                    Text(if (isRefreshing) "Scanning…" else "Refresh")
+                }
+                Button(onClick = onAddFolder) { Text("Add folder") }
+            }
         }
         folders.forEach { folder ->
             Row(
