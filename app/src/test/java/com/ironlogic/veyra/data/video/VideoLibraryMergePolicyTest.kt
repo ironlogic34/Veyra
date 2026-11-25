@@ -7,9 +7,15 @@ class VideoLibraryMergePolicyTest {
     @Test
     fun `merges sources without duplicating a URI`() {
         val mediaStore = video("content://media/1", "MediaStore copy", 10L)
-            .copy(sourceFolderUris = setOf("tree-a"))
+            .copy(
+                sourceFolderUris = setOf("tree-a"),
+                sourceDirectoryUris = setOf("tree-a", "dir-a"),
+            )
         val folderCopy = video("content://media/1", "Folder copy", 20L)
-            .copy(sourceFolderUris = setOf("tree-b"))
+            .copy(
+                sourceFolderUris = setOf("tree-b"),
+                sourceDirectoryUris = setOf("tree-b", "dir-b"),
+            )
         val folderOnly = video("content://documents/2", "Folder video", 30L)
 
         val result = VideoLibraryMergePolicy.merge(listOf(mediaStore), listOf(folderCopy, folderOnly))
@@ -17,6 +23,7 @@ class VideoLibraryMergePolicyTest {
         assertEquals(listOf("content://documents/2", "content://media/1"), result.map { it.contentUri })
         assertEquals("MediaStore copy", result.last().displayName)
         assertEquals(setOf("tree-a", "tree-b"), result.last().sourceFolderUris)
+        assertEquals(setOf("tree-a", "dir-a", "tree-b", "dir-b"), result.last().sourceDirectoryUris)
     }
 
     private fun video(uri: String, name: String, added: Long) = VideoItem(
