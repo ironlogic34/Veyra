@@ -297,7 +297,7 @@ private fun VeyraHome(resumeCount: Int) {
                 videos = videos,
                 isLoading = isLoading,
                 scanError = scanError,
-                hasPermission = videoAccess != VideoAccessState.NONE,
+                accessState = videoAccess,
                 folders = selectedFolders,
                 activeFolderUri = openedFolderUri,
                 activeFolderRootUri = openedFolderRootUri,
@@ -475,7 +475,7 @@ private fun LibraryContent(
     videos: List<VideoItem>,
     isLoading: Boolean,
     scanError: String?,
-    hasPermission: Boolean,
+    accessState: VideoAccessState,
     folders: List<VideoFolder>,
     activeFolderUri: String?,
     activeFolderRootUri: String?,
@@ -575,11 +575,21 @@ private fun LibraryContent(
             }
         }
         when {
-            !hasPermission && folders.isEmpty() -> PermissionCard(onRequestPermission)
+            accessState == VideoAccessState.NONE && folders.isEmpty() -> PermissionCard(onRequestPermission)
             isLoading -> StatusCard("Looking through your local videos…")
             else -> {
-                if (!hasPermission) {
-                    StatusCard("Device-wide access is off. Videos from selected folders are still available.")
+                when (accessState) {
+                    VideoAccessState.NONE -> AccessStatusCard(
+                        message = "Device-wide access is off. Videos from selected folders are still available.",
+                        actionLabel = "Grant video access",
+                        onRequestPermission = onRequestPermission,
+                    )
+                    VideoAccessState.SELECTED -> AccessStatusCard(
+                        message = "Only the videos you selected are visible. Grant full video access to browse the rest of your device library.",
+                        actionLabel = "Change video access",
+                        onRequestPermission = onRequestPermission,
+                    )
+                    VideoAccessState.FULL -> Unit
                 }
                 if (scanError != null) {
                     ScanErrorCard(scanError, onRefresh)
@@ -951,6 +961,25 @@ private fun PermissionCard(onRequestPermission: () -> Unit) {
             Text("Let Veyra see your videos", color = Color.White, fontWeight = FontWeight.SemiBold)
             Text("Your files stay on this device. Veyra only reads local video metadata until you choose something to play.", color = VeyraColors.muted)
             Button(onClick = onRequestPermission) { Text("Grant video access") }
+        }
+    }
+}
+
+@Composable
+private fun AccessStatusCard(
+    message: String,
+    actionLabel: String,
+    onRequestPermission: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(VeyraColors.surface.copy(alpha = 0.65f), RoundedCornerShape(20.dp))
+            .padding(20.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(message, color = VeyraColors.muted)
+            Button(onClick = onRequestPermission) { Text(actionLabel) }
         }
     }
 }
