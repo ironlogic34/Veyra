@@ -78,6 +78,7 @@ import com.ironlogic.veyra.data.video.asVideoItem
 import java.text.DateFormat
 import java.util.Date
 import java.io.File
+import com.ironlogic.veyra.ui.layout.VeyraLayoutModePolicy
 import com.ironlogic.veyra.ui.theme.VeyraTheme
 import com.ironlogic.veyra.ui.video.VideoPlayerScreen
 import kotlinx.coroutines.CancellationException
@@ -152,7 +153,11 @@ private fun VeyraHome() {
         }
     }
 
-    val isTabletLandscape = LocalConfiguration.current.screenWidthDp >= 600
+    val configuration = LocalConfiguration.current
+    val isTabletLandscape = VeyraLayoutModePolicy.isTabletLandscape(
+        screenWidthDp = configuration.screenWidthDp,
+        screenHeightDp = configuration.screenHeightDp,
+    )
 
     selectedVideo?.let { video ->
         VideoPlayerScreen(
