@@ -38,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -85,20 +86,27 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private var resumeCount by mutableIntStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             VeyraTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    VeyraHome()
+                    VeyraHome(resumeCount)
                 }
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        resumeCount += 1
+    }
 }
 
 @Composable
-private fun VeyraHome() {
+private fun VeyraHome(resumeCount: Int) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { VideoLibraryRepository(context.contentResolver) }
@@ -159,34 +167,6 @@ private fun VeyraHome() {
         screenHeightDp = configuration.screenHeightDp,
     )
 
-    selectedVideo?.let { video ->
-        VideoPlayerScreen(
-            video = video,
-            progressStore = progressStore,
-            historyStore = historyStore,
-            settingsStore = playbackSettingsStore,
-            isTabletLandscape = isTabletLandscape,
-            subtitleStore = subtitleStore,
-            memoryMarkStore = memoryMarkStore,
-            queue = playbackQueue,
-            onQueueChange = { playbackQueue = it },
-            onVideoChanged = { nextVideo ->
-                selectedVideoStartPositionMs = null
-                selectedVideo = nextVideo
-            },
-            initialPositionMs = selectedVideoStartPositionMs,
-            onBack = {
-                continueWatching = progressStore.read()
-                history = historyStore.read()
-                memoryMarks = memoryMarkStore.readAll()
-                selectedVideoStartPositionMs = null
-                selectedVideo = null
-                playbackQueue = emptyList()
-            },
-        )
-        return
-    }
-
     fun refresh() {
         if (isLoading) return
 
@@ -246,6 +226,49 @@ private fun VeyraHome() {
         }
     }
 
+    LaunchedEffect(videoAccess) {
+        refresh()
+    }
+
+    LaunchedEffect(resumeCount) {
+        if (resumeCount <= 1) return@LaunchedEffect
+
+        val latestAccess = currentVideoAccess(context)
+        if (latestAccess != videoAccess) {
+            videoAccess = latestAccess
+        } else {
+            refresh()
+        }
+    }
+
+    selectedVideo?.let { video ->
+        VideoPlayerScreen(
+            video = video,
+            progressStore = progressStore,
+            historyStore = historyStore,
+            settingsStore = playbackSettingsStore,
+            isTabletLandscape = isTabletLandscape,
+            subtitleStore = subtitleStore,
+            memoryMarkStore = memoryMarkStore,
+            queue = playbackQueue,
+            onQueueChange = { playbackQueue = it },
+            onVideoChanged = { nextVideo ->
+                selectedVideoStartPositionMs = null
+                selectedVideo = nextVideo
+            },
+            initialPositionMs = selectedVideoStartPositionMs,
+            onBack = {
+                continueWatching = progressStore.read()
+                history = historyStore.read()
+                memoryMarks = memoryMarkStore.readAll()
+                selectedVideoStartPositionMs = null
+                selectedVideo = null
+                playbackQueue = emptyList()
+            },
+        )
+        return
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) {
@@ -266,10 +289,6 @@ private fun VeyraHome() {
                 scanError = "Veyra couldn't keep access to that folder. Select it again and retry."
             }
         }
-    }
-
-    LaunchedEffect(videoAccess) {
-        refresh()
     }
 
     val content: @Composable () -> Unit = {
