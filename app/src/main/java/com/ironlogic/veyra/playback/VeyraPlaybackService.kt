@@ -14,7 +14,6 @@ import com.ironlogic.veyra.data.video.VideoItem
 import com.ironlogic.veyra.data.video.VideoPlaybackHistoryStore
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
 import com.ironlogic.veyra.data.video.VideoProgressWritePolicy
-import com.ironlogic.veyra.data.video.VideoResumePolicy
 import com.ironlogic.veyra.data.video.VideoSleepTimerPolicy
 
 /** Owns playback and keeps progress/history current while the UI is not visible. */
@@ -135,9 +134,7 @@ class VeyraPlaybackService : MediaSessionService() {
             historyStore.record(video, duration, duration)
             trackedPositionMs = duration
         } else {
-            if (trackedPositionMs >= VideoResumePolicy.MINIMUM_RESUME_POSITION_MS) {
-                progressStore.save(video, trackedPositionMs, duration)
-            }
+            progressStore.save(video, trackedPositionMs, duration)
             historyStore.record(video, trackedPositionMs, duration)
         }
         lastSavedPositionMs = trackedPositionMs

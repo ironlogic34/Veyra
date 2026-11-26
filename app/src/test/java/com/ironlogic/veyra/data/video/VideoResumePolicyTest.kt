@@ -7,6 +7,7 @@ import org.junit.Test
 class VideoResumePolicyTest {
     @Test
     fun `does not resume from the first second`() {
+        assertFalse(VideoResumePolicy.shouldResume(0L, 60_000L))
         assertFalse(VideoResumePolicy.shouldResume(999L, 60_000L))
     }
 
