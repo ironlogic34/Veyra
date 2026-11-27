@@ -51,9 +51,11 @@ class VideoFolderRepository(
                 folders += VideoFolder(rawUri, name, accessible = false)
                 errors += "Access to \"$name\" is unavailable. Select the folder again to restore access."
             } else {
+                val rootVideos = linkedMapOf<String, VideoItem>()
+                val rootDirectories = mutableListOf<VideoFolderDirectory>()
                 var accessible = true
                 try {
-                    collectVideos(root, rawUri, videos, directories)
+                    collectVideos(root, rawUri, rootVideos, rootDirectories)
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: SecurityException) {
@@ -62,6 +64,18 @@ class VideoFolderRepository(
                 } catch (_: Exception) {
                     errors += "Some videos in \"$name\" could not be read."
                 }
+
+                val committed = VideoFolderScanPolicy.commitRoot(
+                    existingVideos = videos.values.toList(),
+                    existingDirectories = directories,
+                    rootVideos = rootVideos.values.toList(),
+                    rootDirectories = rootDirectories,
+                    rootAccessible = accessible,
+                )
+                videos.clear()
+                committed.videos.forEach { item -> videos[item.contentUri] = item }
+                directories.clear()
+                directories.addAll(committed.directories)
                 folders += VideoFolder(rawUri, name, accessible)
             }
         }
@@ -70,7 +84,7 @@ class VideoFolderRepository(
             folders = folders,
             videos = videos.values.toList(),
             errors = errors,
-            directories = directories.distinctBy { it.rootUri to it.uri },
+            directories = directories,
         )
     }
 
@@ -144,8 +158,6 @@ class VideoFolderRepository(
             currentCoroutineContext().ensureActive()
         }
     }
-
-
 
     private fun readDuration(uri: Uri): Long {
         val retriever = MediaMetadataRetriever()
