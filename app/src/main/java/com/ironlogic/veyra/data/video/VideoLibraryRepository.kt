@@ -52,11 +52,11 @@ class VideoLibraryRepository(
                 items += VideoItem(
                     id = contentUri,
                     contentUri = contentUri,
-                    displayName = cursor.getString(nameColumn),
-                    durationMs = cursor.getLong(durationColumn),
-                    sizeBytes = cursor.getLong(sizeColumn),
-                    addedEpochSeconds = cursor.getLong(addedColumn),
-                    modifiedEpochSeconds = cursor.getLong(modifiedColumn),
+                    displayName = VideoMediaStoreMetadataPolicy.displayName(cursor.getString(nameColumn)),
+                    durationMs = VideoMediaStoreMetadataPolicy.nonNegative(cursor.getLong(durationColumn)),
+                    sizeBytes = VideoMediaStoreMetadataPolicy.nonNegative(cursor.getLong(sizeColumn)),
+                    addedEpochSeconds = VideoMediaStoreMetadataPolicy.nonNegative(cursor.getLong(addedColumn)),
+                    modifiedEpochSeconds = VideoMediaStoreMetadataPolicy.nonNegative(cursor.getLong(modifiedColumn)),
                 )
             }
         }
