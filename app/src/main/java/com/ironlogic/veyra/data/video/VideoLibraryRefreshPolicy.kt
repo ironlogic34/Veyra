@@ -2,8 +2,8 @@ package com.ironlogic.veyra.data.video
 
 object VideoLibraryRefreshPolicy {
     /**
-     * Uses the latest MediaStore snapshot when available. If that scan fails, retains only
-     * previously discovered MediaStore items; SAF results are refreshed independently.
+     * Uses the latest MediaStore snapshot when available. If that scan fails, retains the
+     * previous MediaStore snapshot; SAF videos are tracked and refreshed separately.
      * A permission change invalidates the old snapshot until a scan with the new access completes.
      */
     fun mediaStoreVideos(
@@ -13,6 +13,6 @@ object VideoLibraryRefreshPolicy {
     ): List<VideoItem> = when {
         accessChangedDuringScan -> emptyList()
         scannedVideos != null -> scannedVideos
-        else -> previousVideos.filter { it.sourceFolderUris.isEmpty() }
+        else -> previousVideos
     }
 }

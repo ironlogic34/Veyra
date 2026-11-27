@@ -35,49 +35,101 @@ data class VideoFolderScanResult(
 class VideoFolderRepository(
     private val context: Context,
 ) {
-    suspend fun scan(folderUris: List<String>): VideoFolderScanResult = withContext(Dispatchers.IO) {
+    suspend fun scan(
+        folderUris: List<String>,
+        previousVideos: List<VideoItem> = emptyList(),
+        previousDirectories: List<VideoFolderDirectory> = emptyList(),
+    ): VideoFolderScanResult = withContext(Dispatchers.IO) {
+        val selectedRootUris = folderUris.distinct()
+        val previousSnapshot = VideoFolderScanPolicy.retainSelectedRoots(
+            existingVideos = previousVideos,
+            existingDirectories = previousDirectories,
+            selectedRootUris = selectedRootUris,
+        )
         val folders = mutableListOf<VideoFolder>()
-        val videos = linkedMapOf<String, VideoItem>()
-        val directories = mutableListOf<VideoFolderDirectory>()
+        val videos = previousSnapshot.videos.associateBy { it.contentUri }.toMutableMap()
+        val directories = previousSnapshot.directories.toMutableList()
         val errors = mutableListOf<String>()
 
-        for (rawUri in folderUris.distinct()) {
+        for (rawUri in selectedRootUris) {
             currentCoroutineContext().ensureActive()
             val uri = Uri.parse(rawUri)
-            val root = runCatching { DocumentFile.fromTreeUri(context, uri) }.getOrNull()
-            val name = root?.name?.takeIf { it.isNotBlank() } ?: fallbackName(uri)
+            val root = try {
+                DocumentFile.fromTreeUri(context, uri)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: SecurityException) {
+                null
+            } catch (_: Exception) {
+                null
+            }
+            val name = runCatching { root?.name }
+                .getOrNull()
+                ?.let { it.takeIf(String::isNotBlank) }
+                ?: fallbackName(uri)
+            val rootVideos = linkedMapOf<String, VideoItem>()
+            val rootDirectories = mutableListOf<VideoFolderDirectory>()
+            var accessible = root != null
+            var outcome = VideoFolderScanOutcome.INCOMPLETE
 
-            if (root == null || !root.canRead()) {
-                folders += VideoFolder(rawUri, name, accessible = false)
+            if (root == null) {
+                accessible = false
+                outcome = VideoFolderScanOutcome.ACCESS_LOST
                 errors += "Access to \"$name\" is unavailable. Select the folder again to restore access."
             } else {
-                val rootVideos = linkedMapOf<String, VideoItem>()
-                val rootDirectories = mutableListOf<VideoFolderDirectory>()
-                var accessible = true
-                try {
-                    collectVideos(root, rawUri, rootVideos, rootDirectories)
+                val canRead = try {
+                    root.canRead()
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (_: SecurityException) {
-                    accessible = false
-                    errors += "Access to \"$name\" changed while scanning. Select it again to restore access."
+                    false
                 } catch (_: Exception) {
-                    errors += "Some videos in \"$name\" could not be read."
+                    null
                 }
 
-                val committed = VideoFolderScanPolicy.commitRoot(
-                    existingVideos = videos.values.toList(),
-                    existingDirectories = directories,
-                    rootVideos = rootVideos.values.toList(),
-                    rootDirectories = rootDirectories,
-                    rootAccessible = accessible,
-                )
-                videos.clear()
-                committed.videos.forEach { item -> videos[item.contentUri] = item }
-                directories.clear()
-                directories.addAll(committed.directories)
-                folders += VideoFolder(rawUri, name, accessible)
+                when (canRead) {
+                    false -> {
+                        accessible = false
+                        outcome = VideoFolderScanOutcome.ACCESS_LOST
+                        errors += "Access to \"$name\" is unavailable. Select the folder again to restore access."
+                    }
+                    null -> {
+                        accessible = true
+                        outcome = VideoFolderScanOutcome.INCOMPLETE
+                        errors += "Veyra couldn't inspect \"$name\". Its previous videos are being kept."
+                    }
+                    true -> {
+                        try {
+                            collectVideos(root, rawUri, rootVideos, rootDirectories)
+                            outcome = VideoFolderScanOutcome.COMPLETE
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: SecurityException) {
+                            accessible = false
+                            outcome = VideoFolderScanOutcome.ACCESS_LOST
+                            errors += "Access to \"$name\" changed while scanning. Select it again to restore access."
+                        } catch (_: Exception) {
+                            accessible = true
+                            outcome = VideoFolderScanOutcome.INCOMPLETE
+                            errors += "Some videos in \"$name\" could not be read. Its previous videos are being kept."
+                        }
+                    }
+                }
             }
+
+            val committed = VideoFolderScanPolicy.commitRoot(
+                existingVideos = videos.values.toList(),
+                existingDirectories = directories,
+                rootVideos = rootVideos.values.toList(),
+                rootDirectories = rootDirectories,
+                rootUri = rawUri,
+                outcome = outcome,
+            )
+            videos.clear()
+            committed.videos.forEach { item -> videos[item.contentUri] = item }
+            directories.clear()
+            directories.addAll(committed.directories)
+            folders += VideoFolder(rawUri, name, accessible)
         }
 
         VideoFolderScanResult(

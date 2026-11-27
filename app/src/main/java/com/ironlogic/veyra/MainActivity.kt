@@ -132,6 +132,8 @@ private fun VeyraHome(resumeCount: Int) {
     var videoAccess by remember { mutableStateOf(currentVideoAccess(context)) }
     var isLoading by remember { mutableStateOf(false) }
     var scanError by remember { mutableStateOf<String?>(null) }
+    var mediaStoreVideos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
+    var folderVideos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var selectedFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
     var openedFolderUri by remember { mutableStateOf<String?>(null) }
@@ -198,7 +200,11 @@ private fun VeyraHome(resumeCount: Int) {
                             emptyList()
                         }
 
-                        val folderResult = folderRepository.scan(folderStore.read())
+                        val folderResult = folderRepository.scan(
+                            folderUris = folderStore.read(),
+                            previousVideos = folderVideos,
+                            previousDirectories = folderDirectories,
+                        )
                         selectedFolders = folderResult.folders
                         folderDirectories = folderResult.directories
                         val activeRootUri = openedFolderRootUri
@@ -221,11 +227,13 @@ private fun VeyraHome(resumeCount: Int) {
 
                         val accessChangedDuringScan = videoAccess != accessAtStart
                         val visibleMediaStoreVideos = VideoLibraryRefreshPolicy.mediaStoreVideos(
-                            previousVideos = videos,
+                            previousVideos = mediaStoreVideos,
                             scannedVideos = localVideos,
                             accessChangedDuringScan = accessChangedDuringScan,
                         )
-                        videos = VideoLibraryMergePolicy.merge(visibleMediaStoreVideos, folderResult.videos)
+                        mediaStoreVideos = visibleMediaStoreVideos
+                        folderVideos = folderResult.videos
+                        videos = VideoLibraryMergePolicy.merge(mediaStoreVideos, folderVideos)
                         val errors = listOfNotNull(localScanError) + folderResult.errors
                         scanError = errors.takeIf { it.isNotEmpty() }?.joinToString(" ")
                     } catch (cancelled: CancellationException) {

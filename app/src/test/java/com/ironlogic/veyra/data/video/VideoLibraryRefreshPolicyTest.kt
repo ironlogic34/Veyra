@@ -28,14 +28,13 @@ class VideoLibraryRefreshPolicyTest {
     }
 
     @Test
-    fun `transient scan failure preserves MediaStore items but excludes folder-only items`() {
-        val mediaStoreVideo = video("media-store")
-        val folderVideo = video("folder", sourceFolders = setOf("tree-a"))
+    fun `transient scan failure preserves the previous MediaStore snapshot`() {
+        val previous = listOf(video("first"), video("second"))
 
         assertEquals(
-            listOf(mediaStoreVideo),
+            previous,
             VideoLibraryRefreshPolicy.mediaStoreVideos(
-                previousVideos = listOf(mediaStoreVideo, folderVideo),
+                previousVideos = previous,
                 scannedVideos = null,
                 accessChangedDuringScan = false,
             ),
@@ -66,14 +65,12 @@ class VideoLibraryRefreshPolicyTest {
         )
     }
 
-    private fun video(id: String, sourceFolders: Set<String> = emptySet()) = VideoItem(
+    private fun video(id: String) = VideoItem(
         id = "content://video/$id",
         contentUri = "content://video/$id",
         displayName = "$id.mp4",
         durationMs = 60_000L,
         sizeBytes = 1_024L,
         addedEpochSeconds = 1L,
-        sourceFolderUris = sourceFolders,
-        sourceDirectoryUris = sourceFolders,
     )
 }
