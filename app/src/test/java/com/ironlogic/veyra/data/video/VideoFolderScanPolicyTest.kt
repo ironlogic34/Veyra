@@ -21,6 +21,30 @@ class VideoFolderScanPolicyTest {
     }
 
     @Test
+    fun `traversal failure invalidates the root when root access is revoked`() {
+        assertEquals(
+            VideoFolderScanOutcome.ACCESS_LOST,
+            VideoFolderScanPolicy.outcomeForTraversalFailure(rootReadable = false),
+        )
+    }
+
+    @Test
+    fun `traversal failure preserves the cached root when a child is unreadable`() {
+        assertEquals(
+            VideoFolderScanOutcome.INCOMPLETE,
+            VideoFolderScanPolicy.outcomeForTraversalFailure(rootReadable = true),
+        )
+    }
+
+    @Test
+    fun `traversal failure preserves the cached root when root access cannot be rechecked`() {
+        assertEquals(
+            VideoFolderScanOutcome.INCOMPLETE,
+            VideoFolderScanPolicy.outcomeForTraversalFailure(rootReadable = null),
+        )
+    }
+
+    @Test
     fun `incomplete root scan preserves its previous videos and directories`() {
         val existing = listOf(
             video("content://tree-a/old.mp4", setOf("tree-a"), setOf("tree-a", "tree-a/old")),

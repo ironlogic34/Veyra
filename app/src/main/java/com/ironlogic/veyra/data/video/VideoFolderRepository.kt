@@ -109,14 +109,21 @@ class VideoFolderRepository(
                             outcome = VideoFolderScanOutcome.COMPLETE
                         } catch (cancelled: CancellationException) {
                             throw cancelled
-                        } catch (_: SecurityException) {
-                            accessible = false
-                            outcome = VideoFolderScanOutcome.ACCESS_LOST
-                            errors += "Access to \"$name\" changed while scanning. Select it again to restore access."
                         } catch (_: Exception) {
-                            accessible = true
-                            outcome = VideoFolderScanOutcome.INCOMPLETE
-                            errors += "Some videos in \"$name\" could not be read. Its previous videos are being kept."
+                            val rootStillReadable = try {
+                                root.canRead()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                null
+                            }
+                            outcome = VideoFolderScanPolicy.outcomeForTraversalFailure(rootStillReadable)
+                            accessible = outcome != VideoFolderScanOutcome.ACCESS_LOST
+                            if (outcome == VideoFolderScanOutcome.ACCESS_LOST) {
+                                errors += "Access to \"$name\" changed while scanning. Select it again to restore access."
+                            } else {
+                                errors += "Some videos in \"$name\" could not be read. Its previous videos are being kept."
+                            }
                         }
                     }
                 }

@@ -20,6 +20,14 @@ object VideoFolderScanPolicy {
             VideoFolderScanOutcome.INCOMPLETE
         }
 
+    /** A failed child read revokes the root only when the root itself is no longer readable. */
+    fun outcomeForTraversalFailure(rootReadable: Boolean?): VideoFolderScanOutcome =
+        if (rootReadable == false) {
+            VideoFolderScanOutcome.ACCESS_LOST
+        } else {
+            VideoFolderScanOutcome.INCOMPLETE
+        }
+
     fun retainSelectedRoots(
         existingVideos: List<VideoItem>,
         existingDirectories: List<VideoFolderDirectory>,
