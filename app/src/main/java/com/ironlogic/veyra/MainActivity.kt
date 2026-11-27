@@ -182,7 +182,7 @@ private fun VeyraHome(resumeCount: Int) {
                     try {
                         val accessAtStart = videoAccess
                         var localScanError: String? = null
-                        val localVideos = if (accessAtStart != VideoAccessState.NONE) {
+                        val localVideos: List<VideoItem>? = if (accessAtStart != VideoAccessState.NONE) {
                             try {
                                 repository.scan()
                             } catch (cancelled: CancellationException) {
@@ -192,7 +192,7 @@ private fun VeyraHome(resumeCount: Int) {
                                     videoAccess = currentVideoAccess(context)
                                 }
                                 localScanError = VideoLibraryScanError.messageFor(exception)
-                                emptyList()
+                                null
                             }
                         } else {
                             emptyList()
@@ -220,19 +220,12 @@ private fun VeyraHome(resumeCount: Int) {
                         }
 
                         val accessChangedDuringScan = videoAccess != accessAtStart
-                        if (VideoLibraryRefreshPolicy.shouldReplaceCachedVideos(
-                                localScanSucceeded = localScanError == null,
-                                hasFolderVideos = folderResult.videos.isNotEmpty(),
-                                accessChangedDuringScan = accessChangedDuringScan,
-                            )
-                        ) {
-                            val visibleMediaStoreVideos = if (accessChangedDuringScan) {
-                                emptyList()
-                            } else {
-                                localVideos
-                            }
-                            videos = VideoLibraryMergePolicy.merge(visibleMediaStoreVideos, folderResult.videos)
-                        }
+                        val visibleMediaStoreVideos = VideoLibraryRefreshPolicy.mediaStoreVideos(
+                            previousVideos = videos,
+                            scannedVideos = localVideos,
+                            accessChangedDuringScan = accessChangedDuringScan,
+                        )
+                        videos = VideoLibraryMergePolicy.merge(visibleMediaStoreVideos, folderResult.videos)
                         val errors = listOfNotNull(localScanError) + folderResult.errors
                         scanError = errors.takeIf { it.isNotEmpty() }?.joinToString(" ")
                     } catch (cancelled: CancellationException) {
