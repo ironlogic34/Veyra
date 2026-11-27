@@ -67,6 +67,8 @@ import com.ironlogic.veyra.data.video.VideoFolderBrowsePolicy
 import com.ironlogic.veyra.data.video.VideoFolderDirectory
 import com.ironlogic.veyra.data.video.VideoFolderStore
 import com.ironlogic.veyra.data.video.VideoLibraryMergePolicy
+import com.ironlogic.veyra.data.video.VideoLibraryRefreshGate
+import com.ironlogic.veyra.data.video.VideoLibraryRefreshPolicy
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
 import com.ironlogic.veyra.data.video.VideoLibraryScanError
 import com.ironlogic.veyra.data.video.VideoPlaybackProgressStore
@@ -112,6 +114,7 @@ private fun VeyraHome(resumeCount: Int) {
     val repository = remember { VideoLibraryRepository(context.contentResolver) }
     val folderStore = remember { VideoFolderStore(context) }
     val folderRepository = remember { VideoFolderRepository(context) }
+    val refreshGate = remember { VideoLibraryRefreshGate() }
     val thumbnailRepository = remember {
         VideoThumbnailRepository(
             context.contentResolver,
@@ -168,59 +171,83 @@ private fun VeyraHome(resumeCount: Int) {
     )
 
     fun refresh() {
-        if (isLoading) return
+        if (!refreshGate.request()) return
 
         scope.launch {
             isLoading = true
-            scanError = null
+            var gateReleased = false
             try {
-                var localScanError: String? = null
-                val localVideos = if (videoAccess != VideoAccessState.NONE) {
+                while (true) {
+                    scanError = null
                     try {
-                        repository.scan()
+                        val accessAtStart = videoAccess
+                        var localScanError: String? = null
+                        val localVideos = if (accessAtStart != VideoAccessState.NONE) {
+                            try {
+                                repository.scan()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (exception: Exception) {
+                                if (exception is SecurityException) {
+                                    videoAccess = currentVideoAccess(context)
+                                }
+                                localScanError = VideoLibraryScanError.messageFor(exception)
+                                emptyList()
+                            }
+                        } else {
+                            emptyList()
+                        }
+
+                        val folderResult = folderRepository.scan(folderStore.read())
+                        selectedFolders = folderResult.folders
+                        folderDirectories = folderResult.directories
+                        val activeRootUri = openedFolderRootUri
+                        if (activeRootUri != null && folderResult.folders.none {
+                                it.uri == activeRootUri && it.accessible
+                            }
+                        ) {
+                            openedFolderUri = null
+                            openedFolderRootUri = null
+                        } else if (
+                            openedFolderUri != null &&
+                            openedFolderRootUri != null &&
+                            openedFolderUri != openedFolderRootUri &&
+                            folderResult.directories.none {
+                                it.uri == openedFolderUri && it.rootUri == openedFolderRootUri
+                            }
+                        ) {
+                            openedFolderUri = openedFolderRootUri
+                        }
+
+                        val accessChangedDuringScan = videoAccess != accessAtStart
+                        if (VideoLibraryRefreshPolicy.shouldReplaceCachedVideos(
+                                localScanSucceeded = localScanError == null,
+                                hasFolderVideos = folderResult.videos.isNotEmpty(),
+                                accessChangedDuringScan = accessChangedDuringScan,
+                            )
+                        ) {
+                            val visibleMediaStoreVideos = if (accessChangedDuringScan) {
+                                emptyList()
+                            } else {
+                                localVideos
+                            }
+                            videos = VideoLibraryMergePolicy.merge(visibleMediaStoreVideos, folderResult.videos)
+                        }
+                        val errors = listOfNotNull(localScanError) + folderResult.errors
+                        scanError = errors.takeIf { it.isNotEmpty() }?.joinToString(" ")
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (exception: Exception) {
-                        if (exception is SecurityException) {
-                            videoAccess = currentVideoAccess(context)
-                        }
-                        localScanError = VideoLibraryScanError.messageFor(exception)
-                        emptyList()
+                        scanError = VideoLibraryScanError.messageFor(exception)
                     }
-                } else {
-                    emptyList()
-                }
 
-                val folderResult = folderRepository.scan(folderStore.read())
-                selectedFolders = folderResult.folders
-                folderDirectories = folderResult.directories
-                val activeRootUri = openedFolderRootUri
-                if (activeRootUri != null && folderResult.folders.none {
-                        it.uri == activeRootUri && it.accessible
+                    if (!refreshGate.finish()) {
+                        gateReleased = true
+                        break
                     }
-                ) {
-                    openedFolderUri = null
-                    openedFolderRootUri = null
-                } else if (
-                    openedFolderUri != null &&
-                    openedFolderRootUri != null &&
-                    openedFolderUri != openedFolderRootUri &&
-                    folderResult.directories.none {
-                        it.uri == openedFolderUri && it.rootUri == openedFolderRootUri
-                    }
-                ) {
-                    openedFolderUri = openedFolderRootUri
                 }
-                if (localScanError == null || folderResult.videos.isNotEmpty()) {
-                    videos = VideoLibraryMergePolicy.merge(localVideos, folderResult.videos)
-                }
-                val errors = listOfNotNull(localScanError) + folderResult.errors
-                scanError = errors.takeIf { it.isNotEmpty() }?.joinToString(" ")
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (exception: Exception) {
-                scanError = VideoLibraryScanError.messageFor(exception)
             } finally {
+                if (!gateReleased) refreshGate.cancel()
                 isLoading = false
             }
         }
