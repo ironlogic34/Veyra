@@ -504,14 +504,14 @@ private fun ConnectedVideoPlayerScreen(
             factory = {
                 PlayerView(it).apply {
                     this.player = player
-                    useController = isTabletLandscape
+                    useController = false
                     controllerAutoShow = true
                     this.resizeMode = resizeMode.toPlayerViewResizeMode()
                 }
             },
             update = { view ->
                 view.player = player
-                view.useController = isTabletLandscape
+                view.useController = false
                 view.resizeMode = resizeMode.toPlayerViewResizeMode()
             },
             modifier = Modifier
@@ -582,6 +582,80 @@ private fun ConnectedVideoPlayerScreen(
                     modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
                     color = Color.White,
                 )
+            }
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(0.78f)
+                    .padding(bottom = 22.dp)
+                    .background(Color(0xE817161B), RoundedCornerShape(24.dp))
+                    .padding(horizontal = 22.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    video.displayName,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        formatPlaybackTime(if (isSeeking) seekPreviewMs else currentPositionMs),
+                        color = Color.LightGray,
+                        fontSize = 12.sp,
+                    )
+                    Text(formatPlaybackTime(durationMs), color = Color.LightGray, fontSize = 12.sp)
+                }
+                Slider(
+                    value = if (durationMs > 0L) {
+                        ((if (isSeeking) seekPreviewMs else currentPositionMs).toFloat() / durationMs).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    },
+                    onValueChange = { fraction ->
+                        isSeeking = true
+                        seekPreviewMs = (fraction * durationMs).toLong().coerceIn(0L, durationMs.coerceAtLeast(0L))
+                    },
+                    onValueChangeFinished = {
+                        player.seekTo(seekPreviewMs)
+                        currentPositionMs = seekPreviewMs
+                        isSeeking = false
+                    },
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        enabled = player.hasPreviousMediaItem(),
+                        onClick = { player.seekToPreviousMediaItem() },
+                    ) { Text("Previous", color = Color.White) }
+                    TextButton(
+                        onClick = { player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L)) },
+                    ) { Text("−10s", color = Color.White) }
+                    TextButton(
+                        onClick = { if (player.isPlaying) player.pause() else player.play() },
+                    ) {
+                        Text(
+                            if (isPlaying) "Ⅱ  Pause" else "▶  Play",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                        )
+                    }
+                    TextButton(
+                        onClick = { player.seekTo((player.currentPosition + 10_000L).coerceAtMost(durationMs)) },
+                    ) { Text("+10s", color = Color.White) }
+                    TextButton(
+                        enabled = player.hasNextMediaItem(),
+                        onClick = { player.seekToNextMediaItem() },
+                    ) { Text("Next", color = Color.White) }
+                }
             }
         } else if (controlsVisible && !controlsLocked) {
             Column(
