@@ -766,8 +766,10 @@ private fun ConnectedVideoPlayerScreen(
                         },
                     )
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         TextButton(
@@ -776,47 +778,49 @@ private fun ConnectedVideoPlayerScreen(
                                 player.seekToPreviousMediaItem()
                                 controlsVisible = true
                             },
-                        ) { Text("Previous") }
-                        TextButton(
-                            onClick = {
-                                if (player.isPlaying) player.pause() else player.play()
-                                controlsVisible = true
-                            },
                         ) {
-                            Text(
-                                if (isPlaying) "Pause" else "Play",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                            )
+                            Text("Previous", color = Color.White, fontSize = 13.sp)
                         }
-                        TextButton(
-                            enabled = player.hasNextMediaItem(),
-                            onClick = {
-                                player.seekToNextMediaItem()
-                                controlsVisible = true
-                            },
-                        ) { Text("Next") }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
+                        Spacer(modifier = Modifier.width(12.dp))
                         TextButton(
                             onClick = {
                                 player.seekTo((player.currentPosition - 10_000L).coerceAtLeast(0L))
                                 controlsVisible = true
                             },
-                        ) { Text("−10s") }
-                        Spacer(modifier = Modifier.width(40.dp))
+                        ) { Text("−10s", color = Color.White, fontSize = 14.sp) }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Button(
+                            onClick = {
+                                if (player.isPlaying) player.pause() else player.play()
+                                controlsVisible = true
+                            },
+                            shape = RoundedCornerShape(28.dp),
+                        ) {
+                            Text(
+                                if (isPlaying) "Ⅱ" else "▶",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 24.sp,
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
                         TextButton(
                             onClick = {
                                 val target = (player.currentPosition + 10_000L).coerceAtMost(durationMs)
                                 player.seekTo(target)
                                 controlsVisible = true
                             },
-                        ) { Text("+10s") }
+                        ) { Text("+10s", color = Color.White, fontSize = 14.sp) }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        TextButton(
+                            enabled = player.hasNextMediaItem(),
+                            onClick = {
+                                player.seekToNextMediaItem()
+                                controlsVisible = true
+                            },
+                        ) {
+                            Text("Next", color = Color.White, fontSize = 13.sp)
+                        }
                     }
                 }
             }
