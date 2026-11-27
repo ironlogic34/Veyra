@@ -13,10 +13,46 @@ class VideoFolderScanPolicyTest {
     }
 
     @Test
-    fun `transient root open failures preserve cached access`() {
+    fun `transient root open failures preserve cached access when a persisted grant exists`() {
         assertEquals(
             VideoFolderScanOutcome.INCOMPLETE,
-            VideoFolderScanPolicy.outcomeForRootOpenFailure(IllegalStateException("provider unavailable")),
+            VideoFolderScanPolicy.outcomeForRootOpenFailure(
+                exception = IllegalStateException("provider unavailable"),
+                hasPersistedReadGrant = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `missing root without a persisted read grant invalidates cached access`() {
+        assertEquals(
+            VideoFolderScanOutcome.ACCESS_LOST,
+            VideoFolderScanPolicy.outcomeForRootOpenFailure(
+                exception = null,
+                hasPersistedReadGrant = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `missing root with an existing persisted read grant preserves the cached snapshot`() {
+        assertEquals(
+            VideoFolderScanOutcome.INCOMPLETE,
+            VideoFolderScanPolicy.outcomeForRootOpenFailure(
+                exception = null,
+                hasPersistedReadGrant = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `unknown persisted grant state does not discard the cached snapshot`() {
+        assertEquals(
+            VideoFolderScanOutcome.INCOMPLETE,
+            VideoFolderScanPolicy.outcomeForRootOpenFailure(
+                exception = IllegalStateException("provider unavailable"),
+                hasPersistedReadGrant = null,
+            ),
         )
     }
 

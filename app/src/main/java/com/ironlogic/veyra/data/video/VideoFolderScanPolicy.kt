@@ -13,12 +13,14 @@ enum class VideoFolderScanOutcome {
 
 /** Maintains a per-root snapshot so one failed SAF scan cannot publish partial results. */
 object VideoFolderScanPolicy {
-    fun outcomeForRootOpenFailure(exception: Exception): VideoFolderScanOutcome =
-        if (exception is SecurityException) {
-            VideoFolderScanOutcome.ACCESS_LOST
-        } else {
-            VideoFolderScanOutcome.INCOMPLETE
-        }
+    fun outcomeForRootOpenFailure(
+        exception: Exception?,
+        hasPersistedReadGrant: Boolean? = null,
+    ): VideoFolderScanOutcome = when {
+        exception is SecurityException -> VideoFolderScanOutcome.ACCESS_LOST
+        hasPersistedReadGrant == false -> VideoFolderScanOutcome.ACCESS_LOST
+        else -> VideoFolderScanOutcome.INCOMPLETE
+    }
 
     /** A failed child read revokes the root only when the root itself is no longer readable. */
     fun outcomeForTraversalFailure(rootReadable: Boolean?): VideoFolderScanOutcome =

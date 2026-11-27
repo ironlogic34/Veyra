@@ -73,8 +73,19 @@ class VideoFolderRepository(
             var outcome = VideoFolderScanOutcome.INCOMPLETE
 
             if (root == null) {
-                outcome = rootOpenFailure?.let(VideoFolderScanPolicy::outcomeForRootOpenFailure)
-                    ?: VideoFolderScanOutcome.ACCESS_LOST
+                val hasPersistedReadGrant = try {
+                    context.contentResolver.persistedUriPermissions.any { permission ->
+                        permission.uri == uri && permission.isReadPermission
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                }
+                outcome = VideoFolderScanPolicy.outcomeForRootOpenFailure(
+                    exception = rootOpenFailure,
+                    hasPersistedReadGrant = hasPersistedReadGrant,
+                )
                 accessible = outcome != VideoFolderScanOutcome.ACCESS_LOST
                 if (outcome == VideoFolderScanOutcome.ACCESS_LOST) {
                     errors += "Access to \"$name\" is unavailable. Select the folder again to restore access."
