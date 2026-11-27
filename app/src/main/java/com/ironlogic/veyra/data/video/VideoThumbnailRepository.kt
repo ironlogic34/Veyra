@@ -9,6 +9,8 @@ import android.os.Build
 import android.util.LruCache
 import android.util.Size
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -22,21 +24,25 @@ class VideoThumbnailRepository(
     private val memoryCache = object : LruCache<String, Bitmap>(MAX_ENTRIES) {}
 
     suspend fun load(video: VideoItem): Bitmap? {
+        currentCoroutineContext().ensureActive()
         val cacheKey = VideoThumbnailCacheKey.forVideo(video)
         memoryCache.get(cacheKey)?.let { return it }
 
         val bitmap = withContext(Dispatchers.IO) {
+            currentCoroutineContext().ensureActive()
             val cachedBytes = diskCache.read(cacheKey)
             if (cachedBytes != null) {
-                val cachedBitmap = runCatching {
+                currentCoroutineContext().ensureActive()
+                val cachedBitmap = VideoThumbnailLoadPolicy.runCatchingWithoutCancellation {
                     BitmapFactory.decodeByteArray(cachedBytes, 0, cachedBytes.size)
                 }.getOrNull()
                 if (cachedBitmap != null) return@withContext cachedBitmap
                 diskCache.remove(cacheKey)
             }
 
+            currentCoroutineContext().ensureActive()
             val uri = Uri.parse(video.contentUri)
-            val extracted = runCatching {
+            val extracted = VideoThumbnailLoadPolicy.runCatchingWithoutCancellation {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     contentResolver.loadThumbnail(uri, Size(320, 180), null)
                 } else {
@@ -44,7 +50,8 @@ class VideoThumbnailRepository(
                 }
             }.getOrNull() ?: return@withContext null
 
-            val encoded = runCatching {
+            currentCoroutineContext().ensureActive()
+            val encoded = VideoThumbnailLoadPolicy.runCatchingWithoutCancellation {
                 ByteArrayOutputStream().use { output ->
                     if (extracted.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)) {
                         output.toByteArray()
@@ -53,10 +60,12 @@ class VideoThumbnailRepository(
                     }
                 }
             }.getOrNull()
+            currentCoroutineContext().ensureActive()
             if (encoded != null) diskCache.write(cacheKey, encoded)
             extracted
         }
 
+        currentCoroutineContext().ensureActive()
         if (bitmap != null) memoryCache.put(cacheKey, bitmap)
         return bitmap
     }
