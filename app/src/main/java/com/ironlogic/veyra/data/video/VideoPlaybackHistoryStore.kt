@@ -64,11 +64,15 @@ class VideoPlaybackHistoryStore(context: Context) {
         VideoPlaybackHistoryCodec.decode(preferences.getString(KEY_ENTRIES, null))
 
     fun record(video: VideoItem, positionMs: Long, durationMs: Long = video.durationMs) {
+        val normalizedDurationMs = durationMs.coerceAtLeast(0L)
         val entry = VideoHistoryEntry(
             contentUri = video.contentUri,
             displayName = video.displayName,
-            positionMs = positionMs.coerceAtLeast(0L),
-            durationMs = durationMs.coerceAtLeast(0L),
+            positionMs = VideoPlaybackHistoryPolicy.normalizePositionMs(
+                positionMs = positionMs,
+                durationMs = normalizedDurationMs,
+            ),
+            durationMs = normalizedDurationMs,
             lastPlayedEpochMs = System.currentTimeMillis(),
         )
         val updated = (listOf(entry) + read().filterNot { it.contentUri == video.contentUri })
