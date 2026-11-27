@@ -5,6 +5,22 @@ import org.junit.Test
 
 class VideoFolderScanPolicyTest {
     @Test
+    fun `root open security failures invalidate cached access`() {
+        assertEquals(
+            VideoFolderScanOutcome.ACCESS_LOST,
+            VideoFolderScanPolicy.outcomeForRootOpenFailure(SecurityException("permission revoked")),
+        )
+    }
+
+    @Test
+    fun `transient root open failures preserve cached access`() {
+        assertEquals(
+            VideoFolderScanOutcome.INCOMPLETE,
+            VideoFolderScanPolicy.outcomeForRootOpenFailure(IllegalStateException("provider unavailable")),
+        )
+    }
+
+    @Test
     fun `incomplete root scan preserves its previous videos and directories`() {
         val existing = listOf(
             video("content://tree-a/old.mp4", setOf("tree-a"), setOf("tree-a", "tree-a/old")),

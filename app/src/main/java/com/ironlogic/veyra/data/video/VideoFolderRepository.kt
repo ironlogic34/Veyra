@@ -54,13 +54,13 @@ class VideoFolderRepository(
         for (rawUri in selectedRootUris) {
             currentCoroutineContext().ensureActive()
             val uri = Uri.parse(rawUri)
+            var rootOpenFailure: Exception? = null
             val root = try {
                 DocumentFile.fromTreeUri(context, uri)
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: SecurityException) {
-                null
-            } catch (_: Exception) {
+            } catch (exception: Exception) {
+                rootOpenFailure = exception
                 null
             }
             val name = runCatching { root?.name }
@@ -73,9 +73,14 @@ class VideoFolderRepository(
             var outcome = VideoFolderScanOutcome.INCOMPLETE
 
             if (root == null) {
-                accessible = false
-                outcome = VideoFolderScanOutcome.ACCESS_LOST
-                errors += "Access to \"$name\" is unavailable. Select the folder again to restore access."
+                outcome = rootOpenFailure?.let(VideoFolderScanPolicy::outcomeForRootOpenFailure)
+                    ?: VideoFolderScanOutcome.ACCESS_LOST
+                accessible = outcome != VideoFolderScanOutcome.ACCESS_LOST
+                if (outcome == VideoFolderScanOutcome.ACCESS_LOST) {
+                    errors += "Access to \"$name\" is unavailable. Select the folder again to restore access."
+                } else {
+                    errors += "Veyra couldn't inspect \"$name\". Its previous videos are being kept."
+                }
             } else {
                 val canRead = try {
                     root.canRead()
@@ -214,15 +219,12 @@ class VideoFolderRepository(
     private fun readDuration(uri: Uri): Long {
         val retriever = MediaMetadataRetriever()
         return try {
-            retriever.setDataSource(context, uri)
-            retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
-                ?.toLongOrNull()
-                ?.coerceAtLeast(0L)
-                ?: 0L
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            0L
+            VideoFolderMetadataPolicy.readDuration {
+                retriever.setDataSource(context, uri)
+                retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    ?.toLongOrNull()
+                    ?: 0L
+            }
         } finally {
             runCatching { retriever.release() }
         }

@@ -13,6 +13,13 @@ enum class VideoFolderScanOutcome {
 
 /** Maintains a per-root snapshot so one failed SAF scan cannot publish partial results. */
 object VideoFolderScanPolicy {
+    fun outcomeForRootOpenFailure(exception: Exception): VideoFolderScanOutcome =
+        if (exception is SecurityException) {
+            VideoFolderScanOutcome.ACCESS_LOST
+        } else {
+            VideoFolderScanOutcome.INCOMPLETE
+        }
+
     fun retainSelectedRoots(
         existingVideos: List<VideoItem>,
         existingDirectories: List<VideoFolderDirectory>,
