@@ -121,7 +121,7 @@ class VideoPlaybackProgressStore(context: Context) {
             .mapNotNull { (_, value) ->
                 (value as? String)?.let(VideoPlaybackProgressCodec::decode)
             }
-        return VideoPlaybackProgressPolicy.mostRecent(entries)
+        return VideoPlaybackProgressPolicy.mostRecent(entries.asIterable())
     }
 
     private fun writeStored(progress: VideoProgress) {
