@@ -867,7 +867,11 @@ private fun HistoryContent(
                             fontSize = 12.sp,
                         )
                         Text(
-                            "Resume from " + formatDuration(entry.positionMs),
+                            if (VideoResumePolicy.shouldResume(entry.positionMs, entry.durationMs)) {
+                                "Resume from " + formatDuration(entry.positionMs)
+                            } else {
+                                "Completed"
+                            },
                             color = VeyraColors.accent,
                             fontSize = 12.sp,
                         )
