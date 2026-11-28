@@ -28,7 +28,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -67,6 +70,10 @@ import com.ironlogic.veyra.data.video.VideoFolderBrowsePolicy
 import com.ironlogic.veyra.data.video.VideoFolderDirectory
 import com.ironlogic.veyra.data.video.VideoFolderStore
 import com.ironlogic.veyra.data.video.VideoLibraryMergePolicy
+import com.ironlogic.veyra.data.video.VideoLibraryQuery
+import com.ironlogic.veyra.data.video.VideoLibrarySettingsStore
+import com.ironlogic.veyra.data.video.VideoSortOrder
+import com.ironlogic.veyra.data.video.VideoResumePolicy
 import com.ironlogic.veyra.data.video.VideoLibraryRefreshGate
 import com.ironlogic.veyra.data.video.VideoLibraryRefreshPolicy
 import com.ironlogic.veyra.data.video.VideoLibraryRepository
@@ -125,6 +132,7 @@ private fun VeyraHome(resumeCount: Int) {
     val historyStore = remember { VideoPlaybackHistoryStore(context) }
     val memoryMarkStore = remember { VideoMemoryMarkStore(context) }
     val playbackSettingsStore = remember { VideoPlaybackSettingsStore(context) }
+    val librarySettingsStore = remember { VideoLibrarySettingsStore(context) }
     val subtitleStore = remember { VideoSubtitleStore(context) }
     val permissionRequests = remember {
         VideoAccessPermission.requestedPermissions(Build.VERSION.SDK_INT)
@@ -145,6 +153,8 @@ private fun VeyraHome(resumeCount: Int) {
     var continueWatching by remember { mutableStateOf(progressStore.read()) }
     var history by remember { mutableStateOf(historyStore.read()) }
     var memoryMarks by remember { mutableStateOf(memoryMarkStore.readAll()) }
+    var librarySortOrder by remember { mutableStateOf(librarySettingsStore.readSortOrder()) }
+    var librarySearchQuery by remember { mutableStateOf("") }
     var destination by remember { mutableStateOf(VeyraDestination.LIBRARY) }
 
     fun openVideo(
@@ -331,6 +341,13 @@ private fun VeyraHome(resumeCount: Int) {
                 activeFolderRootUri = openedFolderRootUri,
                 directories = folderDirectories,
                 thumbnailRepository = thumbnailRepository,
+                searchQuery = librarySearchQuery,
+                onSearchQueryChange = { librarySearchQuery = it },
+                sortOrder = librarySortOrder,
+                onSortOrderChange = { selectedOrder ->
+                    librarySortOrder = selectedOrder
+                    librarySettingsStore.writeSortOrder(selectedOrder)
+                },
                 onOpenVideo = { item, queueItems -> openVideo(item, queueItems = queueItems) },
                 onOpenFolder = { folderUri, rootUri ->
                     openedFolderUri = folderUri
@@ -363,7 +380,10 @@ private fun VeyraHome(resumeCount: Int) {
                 entries = history,
                 marks = memoryMarks,
                 onOpenVideo = { entry ->
-                    openVideo(entry.asVideoItem())
+                    val resumePositionMs = entry.positionMs.takeIf {
+                        VideoResumePolicy.shouldResume(it, entry.durationMs)
+                    } ?: 0L
+                    openVideo(entry.asVideoItem(), resumePositionMs)
                 },
                 onOpenMark = { mark ->
                     openVideo(mark.asVideoItem(), mark.positionMs)
@@ -509,6 +529,10 @@ private fun LibraryContent(
     activeFolderRootUri: String?,
     directories: List<VideoFolderDirectory>,
     thumbnailRepository: VideoThumbnailRepository,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    sortOrder: VideoSortOrder,
+    onSortOrderChange: (VideoSortOrder) -> Unit,
     onOpenVideo: (VideoItem, List<VideoItem>) -> Unit,
     onOpenFolder: (String, String) -> Unit,
     onCloseFolder: () -> Unit,
@@ -517,9 +541,14 @@ private fun LibraryContent(
     onRemoveFolder: (String) -> Unit,
     onRefresh: () -> Unit,
 ) {
-    val visibleVideos = activeFolderUri?.let { folderUri ->
+    val folderVideos = activeFolderUri?.let { folderUri ->
         VideoFolderBrowsePolicy.videosInFolder(videos, folderUri)
     } ?: videos
+    val visibleVideos = VideoLibraryQuery.apply(
+        items = folderVideos,
+        searchQuery = searchQuery,
+        sortOrder = sortOrder,
+    )
     val activeRoot = folders.firstOrNull { it.uri == activeFolderRootUri }
     val activeDirectory = if (activeFolderUri != activeFolderRootUri && activeFolderRootUri != null) {
         directories.firstOrNull { it.uri == activeFolderUri && it.rootUri == activeFolderRootUri }
@@ -602,6 +631,15 @@ private fun LibraryContent(
                 }
             }
         }
+        if (folderVideos.isNotEmpty()) {
+            LibrarySearchAndSort(
+                searchQuery = searchQuery,
+                onSearchQueryChange = onSearchQueryChange,
+                sortOrder = sortOrder,
+                onSortOrderChange = onSortOrderChange,
+                resultCount = visibleVideos.size,
+            )
+        }
         when {
             accessState == VideoAccessState.NONE && folders.isEmpty() -> PermissionCard(onRequestPermission)
             isLoading -> StatusCard("Looking through your local videos…")
@@ -625,6 +663,8 @@ private fun LibraryContent(
                 when {
                     activeFolderUri != null && activeRoot?.accessible == false ->
                         StatusCard("Access to this folder is unavailable. Restore it from Selected folders.")
+                    visibleVideos.isEmpty() && searchQuery.isNotBlank() && scanError == null ->
+                        StatusCard("No videos match your search.")
                     activeFolderUri != null && visibleVideos.isEmpty() && scanError == null ->
                         StatusCard("No videos were found in this folder.")
                     visibleVideos.isEmpty() && scanError == null ->
@@ -647,6 +687,55 @@ private fun LibraryContent(
     }
 }
 
+@Composable
+private fun LibrarySearchAndSort(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    sortOrder: VideoSortOrder,
+    onSortOrderChange: (VideoSortOrder) -> Unit,
+    resultCount: Int,
+) {
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = onSearchQueryChange,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Search videos") },
+            singleLine = true,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("$resultCount videos", color = VeyraColors.muted, fontSize = 12.sp)
+            Box {
+                TextButton(onClick = { sortMenuExpanded = true }) {
+                    Text("Sort: ${sortOrder.label}")
+                }
+                DropdownMenu(
+                    expanded = sortMenuExpanded,
+                    onDismissRequest = { sortMenuExpanded = false },
+                ) {
+                    VideoSortOrder.values().forEach { option ->
+                        DropdownMenuItem(
+                            text = { Text(option.label) },
+                            onClick = {
+                                onSortOrderChange(option)
+                                sortMenuExpanded = false
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 
 @Composable
