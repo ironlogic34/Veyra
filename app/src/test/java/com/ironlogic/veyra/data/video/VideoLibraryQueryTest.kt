@@ -20,6 +20,22 @@ class VideoLibraryQueryTest {
     }
 
     @Test
+    fun `search matches folder paths case insensitively`() {
+        val actionVideo = video("action", "Episode 1.mp4", added = 2L)
+            .copy(relativePath = "Movies\\Action\\Season 1\\")
+        val natureVideo = video("nature", "Episode 2.mp4", added = 3L)
+            .copy(relativePath = "Movies/Nature")
+
+        assertEquals(
+            listOf(actionVideo),
+            VideoLibraryQuery.apply(
+                items = listOf(natureVideo, actionVideo),
+                searchQuery = "  action/season 1 ",
+            ),
+        )
+    }
+
+    @Test
     fun `newest and oldest sorting use library added time`() {
         val older = video("older", "Older.mp4", added = 1L)
         val newer = video("newer", "Newer.mp4", added = 9L)

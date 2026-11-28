@@ -26,9 +26,18 @@ internal object VideoLibraryQuery {
         searchQuery: String = "",
         sortOrder: VideoSortOrder = VideoSortOrder.NEWEST_FIRST,
     ): List<VideoItem> {
-        val query = searchQuery.trim().lowercase(Locale.ROOT)
+        val query = searchQuery.trim()
+            .replace('\\', '/')
+            .trim('/')
+            .lowercase(Locale.ROOT)
         val filtered = items.filter { item ->
-            query.isEmpty() || item.displayName.lowercase(Locale.ROOT).contains(query)
+            val matchesName = item.displayName.lowercase(Locale.ROOT).contains(query)
+            val matchesFolder = item.relativePath
+                ?.replace('\\', '/')
+                ?.trim('/')
+                ?.lowercase(Locale.ROOT)
+                ?.contains(query) == true
+            query.isEmpty() || matchesName || matchesFolder
         }
 
         val nameAscending = compareBy<VideoItem> { it.displayName.lowercase(Locale.ROOT) }

@@ -10,6 +10,7 @@ class VideoLibraryMergePolicyTest {
             .copy(
                 sourceFolderUris = setOf("tree-a"),
                 sourceDirectoryUris = setOf("tree-a", "dir-a"),
+                relativePath = "Movies/Action",
             )
         val folderCopy = video("content://media/1", "Folder copy", 20L)
             .copy(
@@ -24,6 +25,19 @@ class VideoLibraryMergePolicyTest {
         assertEquals("MediaStore copy", result.last().displayName)
         assertEquals(setOf("tree-a", "tree-b"), result.last().sourceFolderUris)
         assertEquals(setOf("tree-a", "dir-a", "tree-b", "dir-b"), result.last().sourceDirectoryUris)
+        assertEquals("Movies/Action", result.last().relativePath)
+    }
+
+    @Test
+    fun `uses folder metadata when MediaStore has no relative path`() {
+        val folderVideo = video("content://media/1", "Folder copy", 20L)
+            .copy(relativePath = "Selected movies")
+        val result = VideoLibraryMergePolicy.merge(
+            mediaStoreVideos = listOf(video("content://media/1", "MediaStore copy", 10L)),
+            folderVideos = listOf(folderVideo),
+        )
+
+        assertEquals("Selected movies", result.single().relativePath)
     }
 
     private fun video(uri: String, name: String, added: Long) = VideoItem(

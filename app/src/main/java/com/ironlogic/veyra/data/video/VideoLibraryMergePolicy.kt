@@ -15,6 +15,7 @@ object VideoLibraryMergePolicy {
                 existing.copy(
                     sourceFolderUris = existing.sourceFolderUris + item.sourceFolderUris,
                     sourceDirectoryUris = existing.sourceDirectoryUris + item.sourceDirectoryUris,
+                    relativePath = existing.relativePath?.takeIf { it.isNotBlank() } ?: item.relativePath,
                 )
             }
         }

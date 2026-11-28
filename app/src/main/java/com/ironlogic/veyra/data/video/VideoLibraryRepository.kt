@@ -15,14 +15,17 @@ class VideoLibraryRepository(
 ) {
     suspend fun scan(): List<VideoItem> = withContext(Dispatchers.IO) {
         currentCoroutineContext().ensureActive()
-        val projection = arrayOf(
-            MediaStore.Video.Media._ID,
-            MediaStore.Video.Media.DISPLAY_NAME,
-            MediaStore.Video.Media.DURATION,
-            MediaStore.Video.Media.SIZE,
-            MediaStore.Video.Media.DATE_ADDED,
-            MediaStore.Video.Media.DATE_MODIFIED,
-        )
+        val projection = buildList {
+            add(MediaStore.Video.Media._ID)
+            add(MediaStore.Video.Media.DISPLAY_NAME)
+            add(MediaStore.Video.Media.DURATION)
+            add(MediaStore.Video.Media.SIZE)
+            add(MediaStore.Video.Media.DATE_ADDED)
+            add(MediaStore.Video.Media.DATE_MODIFIED)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.MediaColumns.RELATIVE_PATH)
+            }
+        }.toTypedArray()
 
         val collectionUri = if (
             VideoMediaStoreVolumePolicy.usesAggregateExternalVolume(Build.VERSION.SDK_INT)
@@ -49,6 +52,11 @@ class VideoLibraryRepository(
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
             val addedColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
             val modifiedColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
+            val relativePathColumn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.RELATIVE_PATH)
+            } else {
+                -1
+            }
 
             while (cursor.moveToNext()) {
                 currentCoroutineContext().ensureActive()
@@ -62,6 +70,14 @@ class VideoLibraryRepository(
                     sizeBytes = VideoMediaStoreMetadataPolicy.nonNegative(cursor.getLong(sizeColumn)),
                     addedEpochSeconds = VideoMediaStoreMetadataPolicy.nonNegative(cursor.getLong(addedColumn)),
                     modifiedEpochSeconds = VideoMediaStoreMetadataPolicy.nonNegative(cursor.getLong(modifiedColumn)),
+                    relativePath = if (relativePathColumn >= 0) {
+                        cursor.getString(relativePathColumn)
+                            ?.replace('\\', '/')
+                            ?.trim('/')
+                            ?.takeIf { it.isNotBlank() }
+                    } else {
+                        null
+                    },
                 )
             }
         }
@@ -80,4 +96,5 @@ data class VideoItem(
     val modifiedEpochSeconds: Long = 0L,
     val sourceFolderUris: Set<String> = emptySet(),
     val sourceDirectoryUris: Set<String> = emptySet(),
+    val relativePath: String? = null,
 )

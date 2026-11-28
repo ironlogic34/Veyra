@@ -116,7 +116,7 @@ class VideoFolderRepository(
                     }
                     true -> {
                         try {
-                            collectVideos(root, rawUri, rootVideos, rootDirectories)
+                            collectVideos(root, rawUri, name, rootVideos, rootDirectories)
                             outcome = VideoFolderScanOutcome.COMPLETE
                         } catch (cancelled: CancellationException) {
                             throw cancelled
@@ -166,6 +166,7 @@ class VideoFolderRepository(
     private suspend fun collectVideos(
         root: DocumentFile,
         folderUri: String,
+        rootName: String,
         videos: MutableMap<String, VideoItem>,
         directories: MutableList<VideoFolderDirectory>,
     ) {
@@ -173,11 +174,12 @@ class VideoFolderRepository(
             val document: DocumentFile,
             val navigationUri: String,
             val ancestorUris: Set<String>,
+            val relativePath: String,
         )
 
         val pending = ArrayDeque<PendingDirectory>()
         val visited = mutableSetOf<String>()
-        pending.add(PendingDirectory(root, folderUri, setOf(folderUri)))
+        pending.add(PendingDirectory(root, folderUri, setOf(folderUri), rootName))
 
         while (pending.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
@@ -189,17 +191,22 @@ class VideoFolderRepository(
                 when {
                     child.isDirectory -> {
                         val childUri = child.uri.toString()
+                        val childName = child.name?.takeIf { it.isNotBlank() } ?: "Untitled folder"
+                        val childRelativePath = listOf(directory.relativePath, childName)
+                            .filter(String::isNotBlank)
+                            .joinToString("/")
                         directories += VideoFolderDirectory(
                             uri = childUri,
                             parentUri = directory.navigationUri,
                             rootUri = folderUri,
-                            name = child.name?.takeIf { it.isNotBlank() } ?: "Untitled folder",
+                            name = childName,
                         )
                         pending.add(
                             PendingDirectory(
                                 document = child,
                                 navigationUri = childUri,
                                 ancestorUris = directory.ancestorUris + childUri,
+                                relativePath = childRelativePath,
                             ),
                         )
                     }
@@ -211,6 +218,8 @@ class VideoFolderRepository(
                             videos[uriString] = existing.copy(
                                 sourceFolderUris = existing.sourceFolderUris + folderUri,
                                 sourceDirectoryUris = existing.sourceDirectoryUris + directory.ancestorUris,
+                                relativePath = existing.relativePath?.takeIf { it.isNotBlank() }
+                                    ?: directory.relativePath,
                             )
                         } else {
                             val name = child.name?.takeIf { it.isNotBlank() } ?: "Untitled video"
@@ -225,6 +234,7 @@ class VideoFolderRepository(
                                 modifiedEpochSeconds = modifiedEpochSeconds,
                                 sourceFolderUris = setOf(folderUri),
                                 sourceDirectoryUris = directory.ancestorUris,
+                                relativePath = directory.relativePath,
                             )
                         }
                     }
