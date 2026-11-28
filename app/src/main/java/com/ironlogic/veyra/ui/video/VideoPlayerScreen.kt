@@ -506,6 +506,7 @@ private fun ConnectedVideoPlayerScreen(
                     this.player = player
                     useController = false
                     controllerAutoShow = true
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                     this.resizeMode = resizeMode.toPlayerViewResizeMode()
                 }
             },
