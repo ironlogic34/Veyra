@@ -706,6 +706,13 @@ private fun LibrarySearchAndSort(
             onValueChange = onSearchQueryChange,
             modifier = Modifier.fillMaxWidth(),
             label = { Text("Search videos") },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    TextButton(onClick = { onSearchQueryChange("") }) {
+                        Text("Clear")
+                    }
+                }
+            },
             singleLine = true,
         )
         Row(
