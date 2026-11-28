@@ -73,6 +73,20 @@ class VideoLibraryQueryTest {
     }
 
     @Test
+    fun `A to Z sorting uses recency before URI for equal names`() {
+        val newest = video("z-uri", "Same.mp4", added = 9L)
+        val oldest = video("a-uri", "same.mp4", added = 1L)
+
+        assertEquals(
+            listOf(newest, oldest),
+            VideoLibraryQuery.apply(
+                items = listOf(oldest, newest),
+                sortOrder = VideoSortOrder.NAME_A_TO_Z,
+            ),
+        )
+    }
+
+    @Test
     fun `duration and size sorting use the requested direction`() {
         val shortSmall = video("short", "Short.mp4", added = 1L, duration = 10L, size = 100L)
         val longLarge = video("long", "Long.mp4", added = 2L, duration = 90L, size = 900L)

@@ -41,15 +41,17 @@ internal object VideoLibraryQuery {
         }
 
         val nameAscending = compareBy<VideoItem> { it.displayName.lowercase(Locale.ROOT) }
-            .thenBy { it.contentUri }
+        val stableNameAscending = nameAscending.thenBy { it.contentUri }
         val newestFirst = compareByDescending<VideoItem> { it.addedEpochSeconds }
-            .then(nameAscending)
+            .then(stableNameAscending)
 
         val comparator = when (sortOrder) {
             VideoSortOrder.NEWEST_FIRST -> newestFirst
             VideoSortOrder.OLDEST_FIRST ->
-                compareBy<VideoItem> { it.addedEpochSeconds }.then(nameAscending)
-            VideoSortOrder.NAME_A_TO_Z -> nameAscending.thenByDescending { it.addedEpochSeconds }
+                compareBy<VideoItem> { it.addedEpochSeconds }.then(stableNameAscending)
+            VideoSortOrder.NAME_A_TO_Z -> nameAscending
+                .thenByDescending { it.addedEpochSeconds }
+                .thenBy { it.contentUri }
             VideoSortOrder.NAME_Z_TO_A ->
                 compareByDescending<VideoItem> { it.displayName.lowercase(Locale.ROOT) }
                     .thenByDescending { it.addedEpochSeconds }
